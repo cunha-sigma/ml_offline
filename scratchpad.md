@@ -1,0 +1,94 @@
+# Scratchpad — the client ML Discovery
+
+Living worklog for the client custom bidding agent, ML lane. Seeded 2026-09-25; last updated 2026-10-20.
+
+## Where we are
+
+- **Phase:** discovery, ML lane (`P(Goal Action | Impression)`). Owner: Rodrigo.
+- 2026-10-20: **repo anonymized** — no client/parent/vendor names anywhere (generic terms per the rule in root `CLAUDE.md`; mapping in session memory). Kept verbatim: literal data identifiers, extraction file/folder names, client originals + all client docx, `archive/`. Frozen report anonymized as a one-time exception (docx regenerated). Every new `md/` reparse must get the same pass.
+- 2026-10-20: `design_docs/OPEN_QUESTIONS.md` created — the consolidated register (client / EDA-gated / team / serving-side, each row sourced); CLIENT_QUESTIONS reviewed against it, stands as-is (de-anonymize at send time).
+- 2026-10-15: **batch_02 client docs received and parsed** to `docs/batch_02/md/` (2 client reports + Olena's testing docs).
+- Serving benchmark done and frozen → externalized to [ml_serving_bench](https://github.com/cunha-sigma/ml_serving_bench) (engines `leaves`+ORT; recommends all-in-ONNX artifact embedded in Go, ADR-0006; serving report in that repo).
+- MVP Go serving lib design externalized to [ml_serving](https://github.com/cunha-sigma/ml_serving) (local copies removed; link, don't path).
+- `design_docs/` design docs: **the set is complete (00–09); final whole-design audit run 2026-10-20 and fixes applied.** New from the audit: touchpoint-4 target row shape extended (inputs, salt, request id, routing-unit, scored-vs-default flag = our asks); `trailing_until` tag mechanism closes the trailing-confirmation state hole (07 promote stamps it, passes judge tagged versions); 05 logs the drift reference distributions; decision-ingest ~30 min proposal; `derived.model_metrics` + `derived.data_quality` named in 02; monitoring thresholds = workload YAML; guardrail alerts = our observability rules → jobs-API abort.
+- Git housekeeping for next commit: a root `CLIENT_QUESTIONS.md` is still tracked (staged add, deleted in worktree) from the move to design_docs — resolve when committing.
+- 2026-10-19: pre-09 whole-design audit (3 scans) run and fixes applied. New ruling: **hot-feature ownership is per model in the data** (each model's Redis prefixes + `derived.feature_<model>_*` tables, one table per model and grain; a shared formula is computed per model — ownership over dedup); the materialization and hot-feature DAGs stay single, parametrized over the models' feature sets. Also: rollout policy registered with the version by the training run (05); goals table marked proposed-fields; cadence tiers marked as client expectations, not live feeds.
+- 08 rulings (user's production-line pattern, from their previous project): workload repo = pipeline-agnostic versioned package (logic + config schemas on a light import path), NO job definitions, NOTHING model-specific — except the one standing-job bundle (deployment job). DAG repo = framework + one folder per pipeline (DAG file, pipeline YAML pinning `package_version`, workload YAMLs = model config + rollout policy) — ALL per-model definitions live there. Pipelines submitted at trigger time (no standing pipeline jobs); explicit version pinning kills deploy-skew; config flow = DAG repo → run → registry → deployment job; schema validation = CI-only import of the schemas subpackage, never at DAG parse. Two-repo split decided by the MWAA parse-time environment alone. Deployment job = one definition, per-env bundle targets (07's last OQ closed). Dev/prod working assumption: same AWS account (separate prefixes, possibly per-env MWAA, separate Databricks envs); account split open, low design impact — everything is parameterized, so it only moves deployment targets.
+- 2026-10-19: post-06 3-scan audit run and fixes applied (stale OQs closed — 07's approval question, Max CPA; 02's degraded-join text removed; "expected CPA" framing fixed in 06; ADR-0002 embedding settled; 4 new cross-repo gaps recorded below).
+- 06 rulings: two fixed manual approval gates (shadow→canary, rollout-canary→promote; aborts always automated); promotion-evidence mode (`proxy` with trailing confirmation vs `full_window`) = per-model rollout-policy parameter; decision-log label join assumed working (fixed before any deploy — never design around its absence).
+- Execution model settled (in 07): one Lakeflow job (same kind as training jobs), two branches by trigger (registration → evaluate/export/advance; schedule → readout pass; alerts → abort path); compute per task (evaluate = only heavy cluster; scheduled branch tiny always); state = rollout config content + UC model-version tags (approvals `approved_canary`/`approved_promote`); standing schedule, logical termination (terminal config = no challenger → passes no-op), one schedule serves all models. Gate replay (in 06): champion from logged probabilities, challenger batch-scored with ONNX Runtime on job compute; valid stand-in via self-contained artifact + 1e-4 parity.
+- 2026-10-16: batch-02 impact pass landed (ADRs 0001/0003/0004/0005 amended, design_docs updated) + full-repo consistency pass (3-scan audit, fixes applied, skills/commands rewritten).
+- Design-scope ruling: design_docs docs = **full-fledged design** (HPO, advertiser calibration, window variants, recalibrate-only all designed in); what the first implementation activates is out of doc scope.
+- 2026-10-16 (05 review): **materialized feature tables decided** — `derived.feature_*` (join keys × time bucket, one table per grain, incremental, versioned per definition) maintained by our materialization pipeline; training-set build = point-in-time join, inline compute only as fallback; hot job unchanged. 04/05/02/00/PLAN updated.
+
+## Artifacts (current)
+
+- `reports/discovery_report/ML_Lane_Discovery_Report.md` (+ `.docx`) — **delivered 2026-09-22, frozen; never update.** Its Q1–Q16 is that date's snapshot; the living question list is DISCOVERY_SUMMARY §2.4 (refer by topic, not number). `reports/` holds delivered artifacts, all frozen.
+- `DISCOVERY_SUMMARY.md` — living knowledge base (client facts vs. our analysis).
+- `adr/` — ADR-0000 meta + **0001–0006** (0001–0003, 0006 Accepted; 0004–0005 Proposed blockers).
+- `design_docs/` — offline platform design docs (in progress).
+- `docs/batch_01/` — initial client doc set; `docs/batch_02/` — 2026-10 client reports + testing docs. Each has an `md/` conversion folder.
+- External repos: [ml_serving](https://github.com/cunha-sigma/ml_serving) · [ml_serving_bench](https://github.com/cunha-sigma/ml_serving_bench).
+
+## New inputs (batch_02, 2026-10)
+
+- **ML Service Background (client, 2026-10-11)** — ML-lane relevant:
+  - New ad set fields proposed: `bidding_strategy` (max_cpm / goal_cpa / lowest_cost="auto bid") + `optimization_goal` (selects the model; IMPRESSIONS needs none).
+  - EV per strategy: max_cpm `max_bid/1000`; goal_cpa `max_bid × P(Action)`; lowest_cost `internal CPA value × P(Action)` (λ finds the level).
+  - **Page View AND Purchase both initial model priorities** (batch_01 framed Purchase top, Page View fallback).
+  - Attribution window may become **advertiser-selectable config** (`PIXEL_PURCHASE_7_day` etc.) → reshapes ADR-0004.
+  - **Sparse-signal/new advertisers = hard requirement**; shared models vs. advertiser calibration layer open.
+  - ML interface open: at least `P(Action)`; probability vs. EV vs. both = technical decision (ADR-0001 compatible).
+  - **Training tables named:** auctions/bids in `vir-prod-uaadsmanager-reporting-db`; `win_logs` + `silver_win_logs_stream`; `silver_kochava_events` + `gold_kochava_*_attribution` (1-day variant stated available — confirm); `bronze_mobile_app_events` + `gold_app_events_*_attribution` → sources known; access mechanism still open (DE lane).
+- **Pacing Service Background (client, 2026-10-07)** — reference only, **pacer is not our scope** (λ vs. α, hybrid start: client λ + ad-server α).
+- **Testing docs (Olena)** — TS+Playwright+k6 stack; perf targets captured: **1M req/s, E2E p99 ≤ 10 ms, ML prediction p99 ≤ 3 ms, 10 candidates/request** (team-stated, confirm with client); AI test-harness vision (H0–H8) + ROI model v2.0 draft.
+
+## Settled 2026-10-15 (batch-02 walk-through, folded into ADRs + design_docs)
+
+- **Interface = option A** (ADR-0001 amended): ML returns calibrated `P(Action)` + score metadata (goal/window answered, model identity, scored-vs-default flag); agent groups candidates by goal, calls lib per slot (slot-per-goal naming), owns strategy→value + multiply. EV on ML side rejected (policy values, calibration monitoring, arm comparability).
+- **Model scope**: one global model per goal, advertisers as features (client's sparse-signal constraint rules out per-advertiser models). Future per-advertiser calibration absorbed: in-graph lookup (Gather + default row), shrinkage group-by fit, eligibility threshold (ADR-0003 amended). Per-advertiser calibration error = standard eval cut (06).
+- **Windows**: goal × window models as default, each trained on own window's labels (ADR-0004 reframed; window may be advertiser-facing config). Up-calibration = client-suggested conditional alternative (triggers: bootstrap history poverty, freshness; gate: ranking-invariance experiment).
+- **Data access scoping**: five curated datasets are a GIVEN for ML; curated-vs-direct + mechanism + curation mechanics = **DE lane (Illia)** (ADR-0005 reassigned). ML states requirements (universe, key, fields, freshness). Auctions/bids never the label universe — feature/analysis sources only.
+- **Goals**: PV + Purchase both MVP (fallback lean dropped); `bidding_strategy` invisible to training; lowest_cost adds no model. Goals-and-models table (for serving + Bidder Agent devs): `design_docs/00_overview.md` §"Goals and models" — impressions=no model (live today), PIXEL_PAGE_VIEW + PIXEL_PURCHASE=MVP slots, app_installs=future.
+
+## Top open blockers (need the client — full register: `design_docs/OPEN_QUESTIONS.md`)
+
+1. **Windows + volumes** — which windows per goal (possibly advertiser-selectable; confirm the 1-day variant) + label volumes per (goal, window) + goal→event_name mapping (both goals ship; volumes decide windows).
+2. **Attribution method** (click vs view-through, ADR-0004): client tables don't record it; can it be exposed?
+3. **Cross-account mechanism** (ADR-0005) — DE-lane owned (tables named in batch-02; transfer/share mechanism still open).
+
+## Cross-repo follow-ups (ml_serving)
+
+**Canonical list: `design_docs/OPEN_QUESTIONS.md`, "Serving-side changes to schedule".** Below: only the serving-current-state notes that don't belong in a design doc (what the lib holds today, re-verified against its code 2026-10-20 at serving commit of 2026-10-14):
+
+- **Slot naming**: slot-per-goal (later goal_window) → `model_name` + config path convention — compatible but undocumented serving-side.
+- **Per-candidate response metadata** (goal/window answered, model identity, scored-vs-default flag): additive but real `Scores` API change — today `Scores` = `[]float32` + one per-call `Arm`.
+- **Decision-row target shape (our asks, now recorded in 00/PLAN touchpoint 4)**: model inputs (serving's own open-questions doc records it — "planned with the experiment arms"), routing salt (already their target), request id, routing-unit value, per-candidate scored-vs-default flag. All `DecisionRecord` changes; the replay, SRM check, and per-candidate defaulted rates design against this shape.
+- **Config encoding for three rollout states**: `challenger.mode` covers shadow/canary/ab only; fleet-load-at-0% has no representation, and A/B vs rollout canary collapse to the same (mode, traffic_pct) shape — needs a convention or field.
+- **Routing-unit value in decision rows**: the sample-ratio check needs the observed arm split per routing unit. Salt is already a serving target commitment (arrives with the arms, like inputs); the routing-unit value is the genuinely new ask.
+- **Per-arm dimension on lib metrics**: latency, error, and defaulted counters are undimensioned (no arm/version/model tag) — per-arm health reads need it.
+- **Shadow sampling/drop counters**: shadow commits to dropping work under pressure but exposes no attempted-vs-dropped counter; the shadow readout's sampling-integrity check needs one.
+- **request_id**: the `(request_id, candidate_id)` join lives only in the serving repo's untouched SOA reference doc; lib v0 record AND `ScoreInput` lack the field → a cross-repo ask, not yet a serving commitment.
+- **Rollout-config transport**: we write S3; serving has since recorded a direction — fsnotify on a local file (ConfigMap-mounted) — while its config source reads files only and names an S3 source as a later implementation. The choice is: something syncs S3 → file/ConfigMap, or an S3 config source ships (forgoing fsnotify). The artifact S3 source is equally unimplemented in v0.
+- **Staged config propagation + alarm rollback** (serving guardrail 2): unassigned in both repos.
+- **Hot-key TTL semantics**: expiry → key absent from mirror → manifest default; mirror shrinks on job failure rather than going stale.
+- **Multi-slot capacity**: N slots = N ONNX session pools per process (a hot swap closes the superseded engine, no permanent doubling); serving now has per-candidate cost figures (~0.04–0.06 ms/candidate/core) — size once the goal count and candidates-per-request are known.
+- **Outbound to serving**: our 06 answers two of their open questions — approval placement (two fixed gates, aborts automated) and label-delay proxies (`proxy`/`full_window` evidence modes with trailing confirmation). Send back so their list stops carrying them as open.
+
+## Held / other-lane dependencies
+
+- **Agent topology** (Go monolith vs. multi-service) — SW-team benchmark (Augusto). Our side is settled regardless: ml_serving is a pure Go library the agent imports (no server mode), so the embedding choice no longer depends on the benchmark.
+- **Account/topology** (separate account + EKS vs. shared VPC) — infra lane; shared VPC and separate account are compatible (AWS RAM) if it comes to that.
+- **Pacing (λ/α)** — other lane entirely; we only consume λ semantics in the bid formula.
+
+## Our answers we own (not client questions)
+
+- Platform: Databricks (client-confirmed) — workloads, MLflow tracking, UC registry, Delta.
+- Monitoring (Datadog + MLOps as needed), retraining cadence (set after EDA), language split (Python offline / Go serving).
+
+## Next steps
+
+- Review 09_monitoring (drafted); then a final full-set audit before calling design_docs done.
+- Client asks: **`design_docs/CLIENT_QUESTIONS.md` holds the top 9, reviewed question by question 2026-10-20** — data sources/access, windows-as-product, served-impression filter + join key, event_name mapping, click-vs-view-through, candidates per request, privacy, identity triplets, data cadence. Dropped as not-ours/not-now: probability-vs-EV (our technical decision), eCPA window/fees (far down the road), ad-set config transport (bidder-agent lane), bidder-response dataset scope, pilot advertisers / measurement readiness, payload samples, volume asks they can't answer (volumes = our EDA).
+- On data access: with tables named, the open piece is the transfer/share mechanism (DE lane, ADR-0005); start EDA when a sample or access lands.
+- Skills/commands rewritten 2026-10-16 for the current project (consistency-audit = 3-scan audit; doc-conventions = thin pointer; status/audit commands current).

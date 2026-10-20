@@ -1,0 +1,131 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+
+# Distribution / packaging
+.Python
+build/
+dist/
+eggs/
+*.egg-info/
+*.egg
+wheels/
+sdist/
+develop-eggs/
+lib/
+lib64/
+parts/
+var/
+*.manifest
+*.spec
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.python-version
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# ── Type checking ─────────────────────────────────────────────────────────────
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+.pyre/
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb_checkpoints/
+profile_default/
+ipython_config.py
+
+# ── ML / data artefacts ───────────────────────────────────────────────────────
+mlruns/
+mlartifacts/
+*.onnx
+*.pkl
+*.joblib
+*.h5
+*.hdf5
+*.pb
+*.pt
+*.pth
+*.safetensors
+
+# Data files (large; use object storage, not git)
+*.parquet
+*.csv
+*.tsv
+*.jsonl
+*.arrow
+*.feather
+*.npy
+*.npz
+
+# ── Environment / secrets ─────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets.yaml
+secrets.yml
+
+# ── Infrastructure / config ───────────────────────────────────────────────────
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+kubeconfig
+kubeconfig.*
+
+# ── IDEs ──────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ── Logs and temp ─────────────────────────────────────────────────────────────
+*.log
+*.tmp
+*.temp
+logs/
+tmp/
+temp/
