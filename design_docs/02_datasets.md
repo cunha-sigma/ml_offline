@@ -34,8 +34,9 @@ Each layer has one rule that defines it:
 
 ## Catalog and naming
 
-One catalog per environment (`ml_dev`, `ml_prod`) is settled
-(`00_overview.md`). The schema and table names below are our working
+One catalog per environment (`ml_dev`, `ml_prod`) is our working
+assumption (`00_overview.md`), open until the account and MWAA
+questions land. The schema and table names below are our working
 proposal: the other docs use them as the working set, and they adjust
 on review, not on anything external.
 
@@ -88,14 +89,14 @@ inside each row await the inventory.
   impressions on `impression_id` (required in the attribution tables,
   nullable in the gold query layer; which layer backs the curated feed
   is open). The conversion rows' own `ad_id` column is nullable on the
-  the web-attribution provider side; that never affects the label join (identity comes from
+  web-attribution provider side; that never affects the label join (identity comes from
   the impression row), but any rollup joining conversions directly to
   ads or campaigns loses the null-`ad_id` rows. `03_labels.md` tracks
   that loss as a data-quality metric.
-- Performance hourly — one row per ad × hour. The client lists it as a
-  possible label source; we decline it for training (impression-level
-  attribution is the better label source) and use it for
-  reconciliation checks only. Its spend fields arrive in normalized
+- Performance hourly — one row per ad × hour. The client's sources
+  scope it to pacing, reporting validation, spend reconciliation, and
+  feature use, not labeling; we use it for reconciliation checks only,
+  impression-level attribution is the label source. Its spend fields arrive in normalized
   currency while win-log costs arrive in micros; the cleaned layer's
   unit normalization is what makes the reconciliation comparable.
 - Scored candidates — one row per candidate the serving lib scored.

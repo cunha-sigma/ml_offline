@@ -6,7 +6,7 @@
 > **How to read this file.** Two top-level parts are kept strictly separate:
 > **Part 1 — Client-provided facts** (what the client docs state) and
 > **Part 2 — Our analysis & working decisions** (what our team has reasoned or leaned, from the ML Lane Discovery Report and ADRs).
-> Never treat Part 2 as client-confirmed. Open questions to the client live in §2.4.
+> Never treat Part 2 as client-confirmed. Open questions to the client live in `design_docs/OPEN_QUESTIONS.md` (§2.4 below is a historical trace only).
 
 ---
 
@@ -38,11 +38,11 @@ The agent is designed as logically separate components so pacing, prediction, an
 | 2.1 | **Bid Ingestor / Processor** | Entry point. Deserialize/validate the ad server protobuf, extract candidates + request context, orchestrate downstream calls, manage lifecycle within latency, handle invalid requests, log/observe. |
 | 2.2 | **Discount Pacing (λ)** | Periodically compute per-line-item λ from expected vs. actual spend-to-date; expose latest λ via low-latency lookup; configurable refresh; safe behavior when λ is stale/missing. Does not necessarily need to run in the synchronous request path (client wording). |
 | 2.3 | **ML Prediction (Expected Value)** | Return `P(Action)` per candidate line item. New models/goals must be addable without changing bid-processing architecture. Latency approaches suggested: in-memory inference, precomputed features, low-latency serving, or precomputed value lookups. |
-| 2.4 | **Bid Decision / Response** | Combine Max CPA, `P(Action)`, and λ into `Final Bid = λ × Max CPA × P(Action)`; select candidate(s); build a valid the ad server `BidAgentResponse`. |
+| 2.4 | **Bid Decision / Response** | Combine Max CPA, `P(Action)`, and λ into `Final Bid = λ × Max CPA × P(Action)`; select candidate(s); build a valid `BidAgentResponse`. |
 
-- **Request flow:** the ad server → Ingestor → (Pacing lookup ‖ ML prediction) → Bid Decision → response. (The end-to-end diagram is `image1.png`, which we cannot render; its labels are client-infra components, not the agent's internal flow.)
+- **Request flow (our reading, per the SW-team benchmark doc's Approach 1 — not a client statement):** the ad server → Ingestor → (Pacing lookup ‖ ML prediction) → Bid Decision → response. (The client's end-to-end diagram is `image1.png`, which we cannot render; its labels are client-infra components, not the agent's internal flow.)
 - **External contract (per the SW-team benchmark doc):** the ad server sends **HTTP POST** with a protobuf `bid.BidAgentRequest`; agent returns **HTTP 200** with `bid.BidAgentResponse` or **HTTP 204** (no bid). The 10 ms end-to-end latency is treated there as a strict response timeout (the client-authored docs state it as an *initial target*); same-AWS-region deployment is the ad server's recommendation. Processing budget must leave room for transport. Bid prices are **integer micros per impression** (e.g., 0.8 × $20 × 0.001 = $0.016 = 16,000 micros = $16 CPM).
-- Schemas are the DSP's OpenRTB (`beeswax-api`: `request.proto`, `adcandidate.proto`). Candidates carry line-item/creative IDs, bidding settings, frequency caps, fees.
+- Schemas are the DSP's OpenRTB extensions (`request.proto`, `adcandidate.proto`). Candidates carry line-item/creative IDs, bidding settings, frequency caps, fees.
 
 ## 1.3 Monolith vs. multi-service benchmark (SW team)
 
@@ -65,7 +65,7 @@ The SW team proposed benchmarking two topologies (pick the simplest that meets l
   - `performance_report_pipeline_merged` — hourly aggregate per `ad_id × hour` (impressions, clicks, conversions, spend, ctr/cpa/cvr, video quartiles).
   - Supporting: `kochava_conversion_data`, `attributed_conversion_data`, `raw_attributed_conversion_data`, `app_events_conversion_data`, `raw_performance_data_kochava`, raw `kochava`.
 - **Identity mapping (critical):** the client stores its own **UUIDs**; for objects that also exist in the DSP, the DSP ID goes in the client's `external_id` and the client UUID goes in the DSP's `alt_id`. Raw DSP logs carry **integer** `campaign_id`, `line_item_id`, `creative_id`, `account_id` — **must be mapped** via `external_id`, never treated as UUIDs. Unified bidder datasets must expose client UUID, DSP ID, and raw-log ID as separate, clearly named fields.
-- **Entity hierarchy:** organization → adaccount → campaign → **adset (≈ DSP line item, the primary delivery config object: bid, budget, dates, pacing, targeting, tracker links)** → ad → creative → media. `campaign.objective_type` ∈ {web_conversions, awareness, app_promotion}; the `adset_type` enum currently **includes video** (the data models say "includes", not "only"). Web measurement uses **enhanced_pixel** (now via the web-attribution provider); app uses **app_tracker** (MMP). Admin `adset_delivery_override` takes precedence over defaults.
+- **Entity hierarchy:** organization → adaccount → campaign → **adset (≈ DSP line item, the primary delivery config object: bid, budget, dates, pacing, targeting, tracker links)** → ad → creative → media. `campaign.objective_type` known values **include** {web_conversions, awareness, app_promotion} (the data models say "includes", not "only" — same hedge as `adset_type` below); the `adset_type` enum currently **includes video**. Web measurement uses **enhanced_pixel** (now via the web-attribution provider); app uses **app_tracker** (MMP). Admin `adset_delivery_override` takes precedence over defaults.
 
 ## 1.5 Infrastructure & environment
 
@@ -88,7 +88,7 @@ The SW team proposed benchmarking two topologies (pick the simplest that meets l
 
 ## 1.6 Compliance
 
-- **AI-use annex (contractual):** AI systems not provided by the client's parent company may not be used for the work without prior **written approval from Sigma**, and AI systems in use must be disclosed. The annex is in the doc set (`docs/batch_01/md/AI annex for Comcast.md`). Practical effect: likely rules out external ML SaaS unless approved.
+- **AI-use annex (Sigma-issued, contractual — not a client statement):** AI systems not provided by the client's parent company may not be used for the work without prior **written approval from Sigma**, and AI systems in use must be disclosed. The annex is in the doc set (`docs/batch_01/md/`, the AI-use annex document; filename still carries the unredacted parent-company name — pending rename). Practical effect: likely rules out external ML SaaS unless approved.
 - Data models flag many **privacy-sensitive** fields (`platform_device_ifa`/`platform_device_idfa`, `ip_address`/`ipv6_address`/`impression_ip_address`, `hhid`, `user_id`, `user_email`, device ids) and consent signals (`is_gdpr`, `is_gdpr_consented`, `gdpr_consent_string`, `us_privacy`, `dnt`, `lmt`) requiring privacy-aware handling and retention rules.
 
 ## 1.7 Non-functional / success criteria (client-stated)
@@ -135,7 +135,7 @@ All equations are per impression; a CPM bid representation multiplies by 1,000. 
 
 # Part 2 — Our analysis & working decisions
 
-*Source: `reports/discovery_report/ML_Lane_Discovery_Report.md` (Rodrigo Cunha, 2026-09-22, delivered and frozen), the `adr/` set, and the team's testing docs (`docs/batch_02/md/testing/`, §2.7). These are our team's reasoning and leans — not client-confirmed. Open questions are in §2.4.*
+*Source: `reports/discovery_report/ML_Lane_Discovery_Report.md` (Rodrigo Cunha, 2026-09-22, delivered and frozen), the `adr/` set, and the team's testing docs (`docs/batch_02/md/testing/`, §2.7). These are our team's reasoning and leans — not client-confirmed. Open questions are in `design_docs/OPEN_QUESTIONS.md`.*
 
 ## 2.1 What we own
 
@@ -165,7 +165,7 @@ MVP goal: credible calibrated probabilities for the two initial goals (Page View
 2. Two initial goals (Page View, Purchase), a single window per goal for now; one model per (goal, window) as the end state.
 3. Labels from the client's curated attributed-conversion datasets (web-attribution provider for web / MMP for app), not raw tables.
 4. **ML service returns `P(Action)`; the `× Max CPA` multiply lives in the Bid Decision service** (see discrepancy below).
-5. Serving co-located with the agent (same region/node); topology follows the benchmark.
+5. Serving embedded in the Go agent as a pure library (ADR-0002, amended 2026-10-19) — settled regardless of the agent's own monolith-vs-multi-service topology, which the SW-team benchmark still decides.
 6. Training and data workloads run on Databricks (client-confirmed); orchestration via MWAA/Airflow.
 7. Tracking/registry = MLflow with Unity Catalog on Databricks; Datadog for serving monitoring.
 8. Scores calibrated post-hoc (Platt/isotonic) + base-rate correction if downsampling; calibrator baked into the served artifact.
@@ -183,7 +183,7 @@ for the settled-item trace:
 
 - **Target & labels:** (1) label volumes per goal and window — both goals (Page View, Purchase) ship per batch-02; volumes decide each goal's windows, not which goal goes first (§1.9); (2) which windows will be offered per goal (possibly advertiser-selectable, §1.9), confirming the 1-day variant the batch-02 report names, and whether the attribution method (click- vs. view-through) can be exposed at all; (3) real attribution coverage / handling of unmatched/privacy-limited conversions? (4) existing CVR baselines to calibrate against?
 - **Data access & features:** (5) sanitized real bid-request samples for premium video/TV (current samples are banner)? (6) mechanism + cadence for the bidder account to consume client data — partially answered: batch-02 names the source tables (§1.9); the cross-account mechanism stays open, now owned by the DE lane; (7) achievable feature freshness per category — partially answered: the cadence tiers are published (§1.5); still open whether a fresher-than-hourly boundary feed is achievable; (8) Max CPA at bid time — **answered by batch-02**: the ad set's existing `max_bid`, read from ad set config and reinterpreted per `bidding_strategy` (CPA under goal_cpa, §1.9).
-- **Serving & latency:** (9) expected/peak throughput and candidates-per-request distribution — team working numbers exist (1M req/s, 10 candidates/request, §2.7) pending client confirmation; (10) latency budget for the ML step within the 10ms envelope? (11) Go monolith or multi-service — internal (SW-team benchmark), not a client ask; kept for completeness; (12) GPU available, or CPU-only for MVP?
+- **Serving & latency:** (9) expected/peak throughput and candidates-per-request distribution — team working numbers exist (1M req/s, 10 candidates/request, §2.7) pending client confirmation; (10) latency budget for the ML step within the 10ms envelope — settled: a firm ~3ms p99 (our target, CLAUDE.md "Our lane"); (11) Go monolith or multi-service — internal (SW-team benchmark), not a client ask; kept for completeness; (12) GPU available, or CPU-only for MVP?
 - **ML interface:** (13) probability vs. expected value — the client leaves it explicitly open (§1.9); our proposal is probability only (ADR-0001, contradiction #1), to present for their confirmation.
 - **Tooling/infra/compliance:** (14)(15) training infra and registry — **settled: Databricks** (workloads, MLflow tracking, Unity Catalog registry; direct client knowledge); (16) reuse the client's MWAA or stand up our own — still open; (17) monitoring standard — ours to decide (Datadog lean), not a client blocker.
 - **Lifecycle:** (18) retraining cadence and pre-serve validation — ours to decide after EDA, not a client blocker; (19) the goal-CPA evaluation window and fee treatment — the client's ML report marks both as remaining to be defined; we need them to compute the cost-per-action readouts (design_docs 06).
@@ -202,11 +202,11 @@ The `adr/` set uses MADR-lite (see `adr/template.md`, `adr/README.md`):
 
 - **ADR-0000** — record architecture decisions (Accepted).
 - **ADR-0001** — ML service returns calibrated `P(Action)`, not expected value (Accepted; amended 2026-10-15 — reaffirmed as our proposal to the client's now-explicitly-open interface question, with per-candidate response metadata and caller-side goal routing).
-- **ADR-0002** — MVP serving = ONNX tabular GBDT on CPU, embedded/co-located in Go; Triton deferred (Accepted).
+- **ADR-0002** — MVP serving = ONNX tabular GBDT on CPU, embedded in Go as a pure library; Triton deferred (Accepted; amended 2026-10-19 — embedding settled as a pure Go library with no server mode, superseding the earlier embed-vs-co-located fork; the agent's own topology no longer affects this choice).
 - **ADR-0003** — calibration mandatory, versioned with the model as a matched pair, baked into the served artifact (Accepted; amended 2026-10-15 — the calibration component may be parameterized: per-window variants and a future per-advertiser lookup with shrinkage, still in-artifact).
 - **ADR-0004** — attribution window + method defining the training label (**Proposed, blocker**; reframed 2026-10-15 — goal × window model granularity as default, window possibly advertiser-facing config, up-calibration as conditional alternative; method still pending the client).
 - **ADR-0005** — cross-boundary data-access / data-engineering ownership (**Proposed, blocker**; reassigned 2026-10-15 to the **Data Engineering lane** — ML treats the five curated datasets as a given and states requirements).
-- **ADR-0006** — the served artifact is the self-contained pipeline (preproc → model → calibration in one ONNX graph) (Accepted).
+- **ADR-0006** — the served artifact is the self-contained pipeline (preproc → model → calibration in one ONNX graph) (Accepted, discovery — revisable).
 
 ## 2.7 Testing lane (Olena, 2026-10)
 
@@ -253,7 +253,7 @@ Team-authored testing docs under `docs/batch_02/md/testing/` — ours, not clien
 
 1. **ML output = probability (our proposal — see ADR-0001, amended):** the client docs' formulas have the Bid Decision service apply `× Max CPA`, but the client's own prose names the service in EV terms (scope-doc heading "ML Prediction Service (Expected Value formulation for Ad Ranking)"; the batch-02 report's "providing the expected-value input"), and batch-02 leaves probability-vs-EV explicitly open ("must at least provide the goal p(Action)"). ADR-0001 (probability only) is our answer to that open question, to present to the client.
 2. **Serving-topology tension:** UA_Infra prescribes a **dedicated EKS (Kubernetes) cluster** for the bidder, while our ML lean is an **embedded/co-located Go** serving path (ONNX on CPU) to minimize hops, with Triton/GPU deferred. These are reconcilable (EKS can host a Go service): the ML side is settled as a pure Go library embedded in the agent (ml_serving; no server mode), validated by our serving benchmark ([ml_serving_bench](https://github.com/cunha-sigma/ml_serving_bench)) and recommended as the all-in-ONNX artifact embedded in Go (ADR-0006). What remains open is the agent's own runtime shape (monolith vs. multi-service — the SW-team benchmark question).
-3. **Banner samples vs. premium-video product:** all provided fixtures/payloads are **banner** examples (from the DSP tool), explicitly not client production traffic; the product is **premium TV/video** (the `adset_type` enum currently includes video). We cannot validate feature availability or latency on representative payloads yet (the real-traffic-samples question, §2.4).
-4. **AI-use annex (now in the doc set):** present at `docs/batch_01/md/AI annex for Comcast.md`. It restricts using AI systems not provided by the client's parent company for the work without written approval; it does **not** govern ordinary tooling choices (e.g., MLflow). Confirm its scope against the signed contract.
+3. **Banner samples vs. premium-video product:** all provided fixtures/payloads are **banner** examples (from the DSP tool), explicitly not client production traffic; the product is **premium TV/video** (the `adset_type` enum currently includes video). We cannot validate feature availability or latency on representative payloads yet (the real-traffic-samples question, `design_docs/OPEN_QUESTIONS.md`).
+4. **AI-use annex (Sigma-issued, now in the doc set):** present in `docs/batch_01/md/` (filename still carries the unredacted parent-company name — pending rename). It restricts using AI systems not provided by the client's parent company for the work without written approval; it does **not** govern ordinary tooling choices (e.g., MLflow). Confirm its scope against the signed contract.
 5. **Goal-priority drift across client docs:** the batch-01 scope doc framed **Purchase as likely top priority with Page View as the likely fallback**; the batch-02 ML report (§1.9) prioritizes **Page View and Purchase together** as the initial models. Both goals ship; label volumes decide each goal's windows, not which goal goes first.
 6. **Empty tech-debt register:** process is defined but the register is a blank template — no logged items yet.

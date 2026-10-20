@@ -18,9 +18,9 @@ Decision record for the **client custom-bidding-agent**, with an **ML-lane focus
 | ID | Decision | Status |
 |---|---|---|
 | [ADR-0000](0000-record-architecture-decisions.md) | Record architecture decisions for this project | Accepted |
-| [ADR-0001](0001-ml-service-returns-probability.md) | ML service returns calibrated P(Action), not expected value | Accepted |
-| [ADR-0002](0002-mvp-onnx-tabular-cpu-serving.md) | MVP serving is ONNX tabular GBDT on CPU; Triton/GPU deferred | Accepted |
-| [ADR-0003](0003-calibration-matched-pair-artifact.md) | Calibration is a versioned matched-pair artifact baked into the served model | Accepted |
+| [ADR-0001](0001-ml-service-returns-probability.md) | ML service returns calibrated P(Action), not expected value | Accepted (amended) |
+| [ADR-0002](0002-mvp-onnx-tabular-cpu-serving.md) | MVP serving is ONNX tabular GBDT on CPU; Triton/GPU deferred | Accepted (amended) |
+| [ADR-0003](0003-calibration-matched-pair-artifact.md) | Calibration is a versioned matched-pair artifact baked into the served model | Accepted (amended) |
 | [ADR-0004](0004-attribution-label-definition.md) | Attribution window and method that defines the training label | Proposed (blocker) |
 | [ADR-0005](0005-cross-boundary-data-access.md) | Cross-boundary data-access pattern (curated exports vs. direct Athena) | Proposed (blocker, DE lane) |
 | [ADR-0006](0006-served-artifact-self-contained-pipeline.md) | Ship preprocessing, model, and calibration as one ONNX file | Accepted (discovery — revisable) |

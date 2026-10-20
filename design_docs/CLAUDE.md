@@ -18,18 +18,18 @@ parity gate) live in the serving repo, not here.
   of truth for config and entity state.
 - The client's data jobs run on **Glue + MWAA/Airflow**, owned by the client's data-jobs
   team.
-- The bidder is expected to run on a **dedicated EKS cluster**, most
-  likely in its own AWS account.
-- **Databricks runs ML.** We use it for workloads
-  (compute), experiment **tracking**, and the **model registry** (MLflow
-  with Unity Catalog); Delta as table format. Building from scratch, we
-  use Databricks-native functionality rather than reinventing it.
-- An **AI-use annex** (contractual) prohibits using AI systems not
-  provided by the client's parent company for the work without prior
-  written approval, and obliges disclosure of AI systems in use.
+- **Databricks runs ML workloads.** Within it, compute, experiment
+  **tracking**, and the **model registry** (MLflow with Unity Catalog),
+  and Delta as table format are **our directed picks**, not
+  client-mandated — building from scratch, we use Databricks-native
+  functionality rather than reinventing it.
+- An **AI-use annex** (Sigma-issued, contractual — not a client
+  statement) prohibits using AI systems not provided by the client's
+  parent company for the work without prior written approval, and
+  obliges disclosure of AI systems in use.
 - **Batch-02 ML Service Background (2026-10-11):** ad sets will gain
   `bidding_strategy` (`max_cpm` / `goal_cpa` / `lowest_cost`) and
-  `optimization_goal` (`IMPRESSIONS` needs no model; `PIXEL_PAGE_VIEW`
+  `optimization_goal` (`impressions` needs no model; `PIXEL_PAGE_VIEW`
   and `PIXEL_PURCHASE` are **both** initial model priorities; app
   events later). The ML service must return at least `P(Action)`; the
   probability-versus-EV interface is left open by the client (our
@@ -41,6 +41,10 @@ parity gate) live in the serving repo, not here.
 
 - Our own **Airflow (MWAA)** instance for orchestration; whether we
   reuse the client's or stand up our own is an open client question.
+- **A dedicated EKS cluster for the bidder**, most likely in its own
+  AWS account — the client's infra doc recommends this, but a
+  competing doc frames the bidder as a Terraform-ownership boundary
+  inside shared infra instead; not settled.
 - **The five curated datasets are a given.** Who produces them (the client, or
   our team's Data Engineer curating from the client's internal tables) and the
   cross-account mechanism are the Data Engineering lane's scope, not

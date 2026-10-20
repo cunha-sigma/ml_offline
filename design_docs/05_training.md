@@ -95,7 +95,9 @@ backfill hasn't run), the build executes that feature's code itself,
 over its own range only, instead of reading the table. The definitions feed the export stage
 too: the manifest is generated from them.
 
-Run modes over the same stages:
+### Run modes
+
+Over the same stages:
 
 - full train — all stages, fixed hyperparameters (stage 2 skipped).
 - tune and train — stage 2 enabled by the tuning spec.

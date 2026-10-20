@@ -21,12 +21,15 @@ team boundary; they cross repo and lane boundaries only — the Data
 Engineering lane that owns data provenance (`01_data_access.md`) is such
 a per-person lane inside the team, not another organization.
 
-Platform, per the directed working assumptions in `PLAN.md`: Databricks
-(Delta tables, Unity Catalog, MLflow with the UC model registry) for
-storage, workloads, tracking, and registry; our own MWAA (Airflow)
-instance for orchestration. Input data is curated by the client and reachable
-from our account; the transfer mechanism is open (`01_data_access.md`),
-and how the data is produced is out of scope.
+Platform: Databricks runs the ML workloads (client-confirmed). Within
+it, Delta tables, Unity Catalog, and MLflow with the UC model registry
+for storage, tracking, and registry are our directed picks
+(`PLAN.md`), not client-mandated; our own MWAA (Airflow) instance for
+orchestration is likewise directed. Input data is reachable from our
+account; who curates it — the client directly, or our Data Engineer
+curating from the client's internal tables — is the Data Engineering
+lane's scope, unresolved (`adr/0005`), and immaterial to this
+platform's design. The transfer mechanism is open (`01_data_access.md`).
 
 ## System map
 
@@ -40,7 +43,7 @@ flowchart TB
   end
 
   subgraph dbx["Databricks: Delta tables under Unity Catalog"]
-    RAW["Dataset layers<br/>raw, cleaned, derived, training"]
+    RAW["Dataset layers<br/>raw, cleaned, derived, training, decisions"]
     LABEL["Label build<br/>curated impressions joined to attributed conversions"]
     FEAT["Shared feature layer + materialization<br/>one definition per feature"]
     TS["Training set<br/>point-in-time join of features and labels"]
@@ -83,7 +86,6 @@ flowchart TB
   ROUT -- "readout pass" --> DEPLOYJOB
   ROUT --> MON
   MON -- "retraining<br/>triggers" --> TRAIN
-  MON -- "guardrail breach<br/>(jobs API)" --> DEPLOYJOB
   DEPLOYJOB --> ART
   DEPLOYJOB --> CFG
   ART --> AGENT
@@ -111,10 +113,13 @@ never the label universe, because a scored candidate may have lost the
 auction. The same rule covers the client's auction and bid data: the label
 universe is served impressions, because `P(Action | Impression)`
 conditions on one; auction and bid data enter only as feature and
-analysis sources. One Databricks deployment job, triggered when training
-registers a new version, owns the whole rollout: each rollout state
-(fleet load, shadow, canary, A/B, rollout canary) is just a content of
-the rollout config, and the job advances by writing successive
+analysis sources. Guardrail breaches on serving health route directly
+from the observability stack's own alert rules to the deployment job's
+abort path through the jobs API — never through the monitoring job
+above (`09_monitoring.md`). One Databricks deployment job, triggered
+when training registers a new version, owns the whole rollout: each
+rollout state (fleet load, shadow, canary, A/B, rollout canary) is
+just a content of the rollout config, and the job advances by writing successive
 revisions, reading out the per-arm tables between advances. It is the
 only writer of shared state.
 
@@ -169,8 +174,9 @@ Each component is owned by one detail doc.
   (goal, window), with the shipped windows pending label-volume data
   and the client's offered-window set. Labels mature
   late; recent data is only partially labeled, and the build tracks
-  maturity explicitly. The nullable the web-attribution provider `ad_id` never affects the label
-  join; it only shrinks rollups joining conversions directly to ads or
+  maturity explicitly. The web-attribution provider's `ad_id` is
+  nullable on the conversion row; it never affects the label join, it
+  only shrinks rollups joining conversions directly to ads or
   campaigns, tracked as a data-quality metric.
 - Shared feature layer (`04_features.md`) — one definition per feature,
   called by the feature-materialization pipeline (which maintains the
@@ -309,9 +315,10 @@ read.
   of the three spaces it is in, in the definition metadata
   (`04_features.md`); our table columns carry explicit space suffixes.
   `02_datasets.md` fixes the naming convention once.
-- Label maturity — attributed conversions arrive on a daily cadence and
-  windows stay open up to 30 days, so recent impressions are only
-  partially labeled. Training-set construction and promotion gates must
+- Label maturity — attributed conversions are expected on a daily
+  cadence (the client's proposed expectation for the curated feed, not
+  a live cadence yet) and windows stay open up to 30 days, so recent
+  impressions are only partially labeled. Training-set construction and promotion gates must
   account for it; early rollout readouts run on proxy metrics while true
   labels trail.
 - Privacy — input data carries privacy-sensitive fields (`ifa`,

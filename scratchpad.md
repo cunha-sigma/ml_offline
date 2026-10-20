@@ -2,6 +2,8 @@
 
 Living worklog for the client custom bidding agent, ML lane. Seeded 2026-09-25; last updated 2026-10-20.
 
+- 2026-10-20 (repo-move audit): post-move 3-scan audit run (internal / vs. client docs / vs. ml_serving) and fixes applied. Notable: redacted a vendor name and a provenance mis-citation in DISCOVERY_SUMMARY; fixed the guardrail-breach diagram in 00/09 (alerts never route through the daily monitoring job); split "Databricks confirmed" from "Delta/UC/MLflow directed" everywhere that conflated them; moved the EKS-cluster line out of client-confirmed facts; added the ML Prediction step's own firm ~3ms p99 latency budget (distinct from the ad server's 10ms whole-agent timeout, both confirmed by Rodrigo); extended the existing "target design, not v0" hedge to the decision-log row shape, the request_id join key, and the rollout-state encoding everywhere they're asserted; repointed stale §2.4 references to `design_docs/OPEN_QUESTIONS.md`. Known follow-up, deferred: `docs/batch_01/md/AI annex for Comcast.md`'s filename still carries the unredacted parent-company name (content inside is anonymized); citations to it were reworded to avoid repeating the name, but the file itself wasn't renamed (out of this audit's scope — `docs/` is the yardstick, not an audit target).
+
 ## Where we are
 
 - **Phase:** discovery, ML lane (`P(Goal Action | Impression)`). Owner: Rodrigo.
@@ -11,7 +13,6 @@ Living worklog for the client custom bidding agent, ML lane. Seeded 2026-09-25; 
 - Serving benchmark done and frozen → externalized to [ml_serving_bench](https://github.com/cunha-sigma/ml_serving_bench) (engines `leaves`+ORT; recommends all-in-ONNX artifact embedded in Go, ADR-0006; serving report in that repo).
 - MVP Go serving lib design externalized to [ml_serving](https://github.com/cunha-sigma/ml_serving) (local copies removed; link, don't path).
 - `design_docs/` design docs: **the set is complete (00–09); final whole-design audit run 2026-10-20 and fixes applied.** New from the audit: touchpoint-4 target row shape extended (inputs, salt, request id, routing-unit, scored-vs-default flag = our asks); `trailing_until` tag mechanism closes the trailing-confirmation state hole (07 promote stamps it, passes judge tagged versions); 05 logs the drift reference distributions; decision-ingest ~30 min proposal; `derived.model_metrics` + `derived.data_quality` named in 02; monitoring thresholds = workload YAML; guardrail alerts = our observability rules → jobs-API abort.
-- Git housekeeping for next commit: a root `CLIENT_QUESTIONS.md` is still tracked (staged add, deleted in worktree) from the move to design_docs — resolve when committing.
 - 2026-10-19: pre-09 whole-design audit (3 scans) run and fixes applied. New ruling: **hot-feature ownership is per model in the data** (each model's Redis prefixes + `derived.feature_<model>_*` tables, one table per model and grain; a shared formula is computed per model — ownership over dedup); the materialization and hot-feature DAGs stay single, parametrized over the models' feature sets. Also: rollout policy registered with the version by the training run (05); goals table marked proposed-fields; cadence tiers marked as client expectations, not live feeds.
 - 08 rulings (user's production-line pattern, from their previous project): workload repo = pipeline-agnostic versioned package (logic + config schemas on a light import path), NO job definitions, NOTHING model-specific — except the one standing-job bundle (deployment job). DAG repo = framework + one folder per pipeline (DAG file, pipeline YAML pinning `package_version`, workload YAMLs = model config + rollout policy) — ALL per-model definitions live there. Pipelines submitted at trigger time (no standing pipeline jobs); explicit version pinning kills deploy-skew; config flow = DAG repo → run → registry → deployment job; schema validation = CI-only import of the schemas subpackage, never at DAG parse. Two-repo split decided by the MWAA parse-time environment alone. Deployment job = one definition, per-env bundle targets (07's last OQ closed). Dev/prod working assumption: same AWS account (separate prefixes, possibly per-env MWAA, separate Databricks envs); account split open, low design impact — everything is parameterized, so it only moves deployment targets.
 - 2026-10-19: post-06 3-scan audit run and fixes applied (stale OQs closed — 07's approval question, Max CPA; 02's degraded-join text removed; "expected CPA" framing fixed in 06; ADR-0002 embedding settled; 4 new cross-repo gaps recorded below).
@@ -23,10 +24,10 @@ Living worklog for the client custom bidding agent, ML lane. Seeded 2026-09-25; 
 
 ## Artifacts (current)
 
-- `reports/discovery_report/ML_Lane_Discovery_Report.md` (+ `.docx`) — **delivered 2026-09-22, frozen; never update.** Its Q1–Q16 is that date's snapshot; the living question list is DISCOVERY_SUMMARY §2.4 (refer by topic, not number). `reports/` holds delivered artifacts, all frozen.
+- `reports/discovery_report/ML_Lane_Discovery_Report.md` (+ `.docx`) — **delivered 2026-09-22, frozen; never update.** Its Q1–Q16 is that date's snapshot; the living question register is `design_docs/OPEN_QUESTIONS.md` (refer by topic, not number). `reports/` holds delivered artifacts, all frozen.
 - `DISCOVERY_SUMMARY.md` — living knowledge base (client facts vs. our analysis).
 - `adr/` — ADR-0000 meta + **0001–0006** (0001–0003, 0006 Accepted; 0004–0005 Proposed blockers).
-- `design_docs/` — offline platform design docs (in progress).
+- `design_docs/` — offline platform design docs (complete, 00–09; see "Where we are" for the last full audit date).
 - `docs/batch_01/` — initial client doc set; `docs/batch_02/` — 2026-10 client reports + testing docs. Each has an `md/` conversion folder.
 - External repos: [ml_serving](https://github.com/cunha-sigma/ml_serving) · [ml_serving_bench](https://github.com/cunha-sigma/ml_serving_bench).
 
@@ -41,7 +42,7 @@ Living worklog for the client custom bidding agent, ML lane. Seeded 2026-09-25; 
   - ML interface open: at least `P(Action)`; probability vs. EV vs. both = technical decision (ADR-0001 compatible).
   - **Training tables named:** auctions/bids in `vir-prod-uaadsmanager-reporting-db`; `win_logs` + `silver_win_logs_stream`; `silver_kochava_events` + `gold_kochava_*_attribution` (1-day variant stated available — confirm); `bronze_mobile_app_events` + `gold_app_events_*_attribution` → sources known; access mechanism still open (DE lane).
 - **Pacing Service Background (client, 2026-10-07)** — reference only, **pacer is not our scope** (λ vs. α, hybrid start: client λ + ad-server α).
-- **Testing docs (Olena)** — TS+Playwright+k6 stack; perf targets captured: **1M req/s, E2E p99 ≤ 10 ms, ML prediction p99 ≤ 3 ms, 10 candidates/request** (team-stated, confirm with client); AI test-harness vision (H0–H8) + ROI model v2.0 draft.
+- **Testing docs (Olena)** — TS+Playwright+k6 stack; perf targets captured: **1M req/s, E2E p99 ≤ 10 ms, 10 candidates/request** (team-stated, confirm with client); **ML prediction p99 ≤ 3 ms** is the ML lane's own confirmed internal budget within the 10ms (Rodrigo, 2026-10-20) — not something needing client confirmation; AI test-harness vision (H0–H8) + ROI model v2.0 draft.
 
 ## Settled 2026-10-15 (batch-02 walk-through, folded into ADRs + design_docs)
 
@@ -88,7 +89,6 @@ Living worklog for the client custom bidding agent, ML lane. Seeded 2026-09-25; 
 
 ## Next steps
 
-- Review 09_monitoring (drafted); then a final full-set audit before calling design_docs done.
 - Client asks: **`design_docs/CLIENT_QUESTIONS.md` holds the top 9, reviewed question by question 2026-10-20** — data sources/access, windows-as-product, served-impression filter + join key, event_name mapping, click-vs-view-through, candidates per request, privacy, identity triplets, data cadence. Dropped as not-ours/not-now: probability-vs-EV (our technical decision), eCPA window/fees (far down the road), ad-set config transport (bidder-agent lane), bidder-response dataset scope, pilot advertisers / measurement readiness, payload samples, volume asks they can't answer (volumes = our EDA).
 - On data access: with tables named, the open piece is the transfer/share mechanism (DE lane, ADR-0005); start EDA when a sample or access lands.
 - Skills/commands rewritten 2026-10-16 for the current project (consistency-audit = 3-scan audit; doc-conventions = thin pointer; status/audit commands current).

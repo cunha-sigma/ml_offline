@@ -11,7 +11,7 @@ The five curated datasets below, taken as a given. The client's stated design
 principle is that the bidder consumes curated outputs prepared on a
 defined cadence, not raw internal production tables; whether the client
 delivers them directly or our team's Data Engineer curates them from
-The client's internal tables is the Data Engineering lane's scope and
+the client's internal tables is the Data Engineering lane's scope and
 immaterial to this platform. This doc states what we consume and what
 we require of it; provenance, curation mechanics, and the boundary
 mechanism are recorded here only as reference for the DE lane.
@@ -52,8 +52,9 @@ crosses the account boundary:
 ### Provenance inventory (reference for the DE lane)
 
 The batch-02 ML Service Background names the internal tables training
-data comes from, across two Athena databases. These are the client's internal
-names; whether the curated datasets ship off them as-is or repackaged
+data comes from, across two databases. The query engine is unstated in
+that report — Athena is our inference from the client's stack, not
+client-confirmed. These are the client's internal names; whether the curated datasets ship off them as-is or repackaged
 is the DE lane's question, not ours. Recorded as the provenance menu:
 
 - `vir-prod-uaadsmanager-reporting-db` — auctions

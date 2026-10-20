@@ -68,7 +68,7 @@ the shared layer:
   feature grouped by publisher needs one key per publisher, not one key
   for the whole feature). Starts with a namespace prefix owned by the
   model whose feature set declares the definition (the anti-collision
-  contract), for example `cpa:li_clicks_30m:{line_item_id}`.
+  contract), for example `pixel_purchase:li_clicks_30m:{line_item_id}`.
 - default — a float used when the key is absent. The default means cold
   start (a line item with no history yet), not error masking; it must
   be a value the model can meaningfully consume.

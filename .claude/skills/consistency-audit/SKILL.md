@@ -10,7 +10,7 @@ description: Run the 3-scan consistency audit on the client ML discovery repo (i
 ## Scope
 
 In: root `CLAUDE.md`, `DISCOVERY_SUMMARY.md`, `scratchpad.md`, `adr/*.md`, `design_docs/*.md`, `.claude/skills/`, `.claude/commands/`.
-Out: `archive/` (superseded project), `docs/` (client sources — they are the yardstick, not audit targets), `reports/` (delivered, frozen artifacts — **never flag or update their content**, only files that mis-cite them) — and anything not listed as in-scope above.
+Out: `docs/` (client sources — they are the yardstick, not audit targets), `reports/` (delivered, frozen artifacts — **never flag or update their content**, only files that mis-cite them) — and anything not listed as in-scope above.
 
 ## Yardsticks
 
@@ -22,7 +22,7 @@ Out: `archive/` (superseded project), `docs/` (client sources — they are the y
 
 Launch 3 read-only Explore subagents in parallel, one per scan:
 
-1. **Internal coherence** — contradictions between any two in-scope files, stale claims vs. the ADRs, broken cross-references (sections, ADR numbers, file paths, per-doc open-question numbers), mermaid node labels contradicting their doc's text, violations of `design_docs/`'s rules (no `../` paths, no ADR-number citations, external repos only by GitHub URL).
+1. **Internal coherence** — contradictions between any two in-scope files, stale claims vs. the ADRs, broken cross-references (sections, ADR numbers, file paths, per-doc open-question numbers), mermaid node labels contradicting their doc's text, violations of `design_docs/`'s rules (no `../` paths — which rules out ADR-number citations too, since `adr/` is outside the folder — external repos only by GitHub URL).
 2. **Vs client docs** — field-level verification of every quoted or paraphrased client claim (formulas, enum values, table and field names, cadence tiers, windows). Flag anything presented as client fact that the sources don't state (exceptions: facts explicitly marked as working assumptions, and Databricks, which is client-confirmed via direct client knowledge outside the doc set). `DISCOVERY_SUMMARY.md` Part 1 must be purely client-attributable or explicitly attributed (SW team / ours).
 3. **Vs ml_serving** — every claim about the four touchpoints (artifact + manifest, rollout config, hot store, decision logs), verified against the serving docs and code. Classify as MISMATCH / GAP (we assert something serving doesn't define yet — these become cross-repo follow-ups in `scratchpad.md`) / OK-but-imprecise.
 
@@ -36,6 +36,6 @@ Each agent reports numbered findings: file:line, short conflicting quotes, sever
 
 ## Conventions that findings must respect
 
-- Client questions are referenced **by topic**, never by Q-number, outside `DISCOVERY_SUMMARY.md` §2.4's own list (the delivered report's Q1–Q16 is a frozen snapshot with different numbering).
+- Client questions are referenced **by topic**, never by Q-number, outside the delivered report's own frozen Q1–Q16 list (that numbering is a 2026-09-22 snapshot; the living register is `design_docs/OPEN_QUESTIONS.md`).
 - Leans are marked as leans; working assumptions as assumptions, with who can confirm them.
 - Facts get provenance when sources disagree (for example, batch-01 vs batch-02 statements).

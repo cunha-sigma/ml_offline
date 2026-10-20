@@ -17,7 +17,7 @@ phrased to send.
 | Privacy/PII review: field-by-field drop/hash/retain, hashing sufficiency, `gdpr_consent_string`, dev-data use | cleaned-layer rules; the dev environment's data | `PLAN.md` OQ4, `02_datasets.md` OQ3, `08_orchestration_repos.md` OQ3 |
 | Committed cadence per shared dataset; is a fresher-than-hourly delivery feed an option? | training recency and the online-feature freshness floor | `01_data_access.md` OQ3, `04_features.md` OQ1 |
 | The cost-per-action evaluation window and fee treatment (their own stated TBD) | aligned cost-per-action readouts | `06_validation_promotion.md` OQ2 |
-| Candidates-per-request distribution (median, average, p99, max); volume figures if available | serving capacity sizing; A/B arm-size math | `06_validation_promotion.md` OQ3; standing discovery ask |
+| Candidates-per-request distribution (median, average, p99, max); volume figures if available | serving capacity sizing; A/B arm-size math | `CLIENT_QUESTIONS.md`; standing discovery ask |
 | Sanitized premium-video bid-request samples (current fixtures are banner) | feature availability at bid time on real traffic | standing discovery ask |
 | Observed baseline conversion rates per goal | first-model plausibility checks in the offline gate | `06_validation_promotion.md` OQ1 |
 | MWAA: reuse the client's instance or run our own | where DAG code deploys; dev's instance | `08_orchestration_repos.md` OQ1 |
@@ -42,7 +42,7 @@ phrased to send.
 
 | Question | Decided with | Sources |
 |---|---|---|
-| The decision-log sink the agent wires the logger to (assume S3) | the agent lane | `00_overview.md` OQ2, `09_monitoring.md` OQ1 |
+| The decision-log sink the agent wires the logger to (assume S3) | the agent lane | `00_overview.md` OQ2, `09_monitoring.md` OQ1, `PLAN.md` OQ2 |
 | Alert routing: the single pane for the bidder account | team + infra | `09_monitoring.md` OQ2 |
 | Key-presence validation at deploy time: existence only or value distributions | team | `04_features.md` OQ2 |
 | Which role holds the two approval gates | team | `06_validation_promotion.md` OQ4 |

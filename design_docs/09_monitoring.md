@@ -27,7 +27,8 @@ flowchart LR
   RO --> MON
   DEC --> MON
   MON --> TRIG --> TRAIN
-  MON -- "guardrail breach,<br/>jobs API" --> DJ
+  OBS["observability stack<br/>guardrail alert rules"]
+  OBS -- "guardrail breach,<br/>jobs API" --> DJ
 ```
 
 ## Decision-log ingestion
@@ -143,14 +144,14 @@ column — while the monitoring DAG computes the two checks that are no
 pipeline's byproduct and alone evaluates every alert rule. Those two
 guard the feed itself: freshness catches data not arriving (newest
 partition age vs. the expected cadence, per dataset), reconciliation
-catches data arriving wrong (our cleaned totals vs. The client's own hourly
+catches data arriving wrong (our cleaned totals vs. the client's own hourly
 rollups, on normalized units). The training pipeline and the deployment
 job write nothing here. No separate data-quality DAG exists.
 
 | Check | Written by | Computed from | Rule → action |
 |---|---|---|---|
 | inbound schema conformance | cleaned ETL, per run | inbound columns and types vs. the expected schema per curated dataset | mismatch → alert; the affected partitions do not load |
-| inbound-feed freshness (`01_data_access.md`) | monitoring job, daily | latest partition age per curated dataset vs. The client's proposed cadence | age beyond cadence + margin → alert |
+| inbound-feed freshness (`01_data_access.md`) | monitoring job, daily | latest partition age per curated dataset vs. the client's proposed cadence | age beyond cadence + margin → alert |
 | orphan-conversion rate (`03_labels.md`) | label build, per run | conversions whose impression key matches no impression row, per day | rising rate → alert: the impressions and attribution feeds disagree about what was served |
 | null-`ad_id` share (`03_labels.md`) | label build, per run | attribution rows with null `ad_id`, per day | tracked and reported with rollups; alert on step change |
 | label coverage per goal | label build, per run | matured impressions and positive labels per goal and window, per day | collapse in volume or positives → alert: measurement or feed problem upstream of any model |
@@ -165,9 +166,11 @@ data-quality breach above alerts; hot-feature job failures alert with
 priority, because their failure mode is silent defaulting in serving.
 Routing lean, not decided: one pane consistent with the client's stack
 (CloudWatch alarms, Slack routing, Datadog APM), fed by Databricks and
-MWAA alerting — the client expects the bidder's monitoring to be
-managed independently, so the choice is ours; Databricks-native SQL
-alerts are the fallback shape if a second pane is acceptable.
+MWAA alerting — the bidder's monitoring will likely be managed
+independently of the client's own infrastructure monitoring (the
+client's infra docs say "likely," not a firm expectation), so the
+choice is ours; Databricks-native SQL alerts are the fallback shape if
+a second pane is acceptable.
 
 Rollout guardrails on serving health have a named producer: alert rules
 we define in the observability stack, whose action starts the
@@ -209,7 +212,7 @@ cadence are still their call.
    lib's logger to. S3 is the working assumption everything above
    builds on.
 2. Alert routing: the single pane for the bidder account's monitoring
-   (the client manages the bidder's monitoring independently of the client's) —
+   (likely managed independently of the client's own infra monitoring) —
    lean stated above.
 3. Drift and degradation thresholds, and the minimum volumes behind
    them — set at EDA.

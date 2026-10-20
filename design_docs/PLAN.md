@@ -44,9 +44,10 @@ offline-only one.
 
 Client-confirmed: AWS; the client's warehouse is S3 + Athena + Iceberg + Glue +
 Lake Formation with Postgres as config source of truth; the client's data jobs
-run on Glue + MWAA; Databricks (Delta, Unity Catalog, MLflow/UC
-registry) for ML workloads, tracking, and registry. Directed (ours):
-our own MWAA instance for orchestration. Details and the AI-use annex
+run on Glue + MWAA; Databricks for ML workloads. Directed (ours):
+within Databricks, Delta/Unity Catalog/MLflow with the UC registry
+(assumption 1 below) for storage, tracking, and registry; our own
+MWAA instance for orchestration. Details and the AI-use annex
 constraint live in `CLAUDE.md`. Code lands in two repos: one for DAGs,
 one for workloads. These docs design both.
 
