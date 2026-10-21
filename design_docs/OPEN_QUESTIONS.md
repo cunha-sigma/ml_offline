@@ -17,6 +17,7 @@ phrased to send.
 | Privacy/PII review: field-by-field drop/hash/retain, hashing sufficiency, `gdpr_consent_string`, dev-data use | cleaned-layer rules; the dev environment's data | `PLAN.md` OQ4, `02_datasets.md` OQ3, `08_orchestration_repos.md` OQ3 |
 | Committed cadence per shared dataset; is a fresher-than-hourly delivery feed an option? | training recency and the online-feature freshness floor | `01_data_access.md` OQ3, `04_features.md` OQ1 |
 | The cost-per-action evaluation window and fee treatment (their own stated TBD) | aligned cost-per-action readouts | `06_validation_promotion.md` OQ2 |
+| Does the ad server give the agent a real-time win-notice/price signal, or only the hourly curated feed | the spend and win-rate guardrails' actual latency floor | `06_validation_promotion.md` OQ5 |
 | Candidates-per-request distribution (median, average, p99, max); volume figures if available | serving capacity sizing; A/B arm-size math | `CLIENT_QUESTIONS.md`; standing discovery ask |
 | Sanitized premium-video bid-request samples (current fixtures are banner) | feature availability at bid time on real traffic | standing discovery ask |
 | Observed baseline conversion rates per goal | first-model plausibility checks in the offline gate | `06_validation_promotion.md` OQ1 |
