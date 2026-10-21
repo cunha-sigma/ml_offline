@@ -255,7 +255,8 @@ rewritten.
 
 ### 2. Rollout config
 
-One mutable JSON per model slot: `model_name`, monotonic `revision`,
+Path: `<model_name>/rollout_config.json`, sibling to that model's
+`v<version>/` artifact folders. One mutable JSON per model slot: `model_name`, monotonic `revision`,
 `updated_at` and `updated_by` for audit, `champion` (`version`, `uri`,
 `checksums` for both files), later `challenger` and `routing`. Slots
 are named per goal, later per goal and window; the bidding agent groups

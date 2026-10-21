@@ -165,6 +165,29 @@ expiry ends the judging). One schedule serves every model's rollout —
 the pass scans all slots' configs and the trailing tags — while the
 registration trigger stays per model version.
 
+Slot discovery for the scheduled branch: list the known config prefix
+— one `rollout_config.json` per model slot, sibling to that slot's
+`v<version>/` artifact folders.
+
+```mermaid
+flowchart LR
+  REG(["new version<br/>registers"]) --> EEA["Evaluate → Export → Advance<br/>(this model only)"]
+  EEA --> CFGW1[("rollout_config.json<br/>first revision")]
+
+  SCHED(["schedule fires"]) --> LIST["list the config prefix"]
+  LIST --> CFG[("rollout_config.json<br/>champion · challenger · previous")]
+  CFG -- "no challenger" --> NOOP["no-op"]
+  CFG -- "challenger present" --> DECIDE["check readout table<br/>against rollout policy"]
+  RT[("readout table")] --> DECIDE
+  POL[("rollout policy")] --> DECIDE
+  DECIDE -- "at a gate,<br/>no approval tag" --> HOLD["hold"]
+  DECIDE -- "approved or<br/>no gate due" --> CFGW2[("rollout_config.json<br/>next revision")]
+  CFGW2 -. "on promote" .-> ALIAS["champion/previous aliases<br/>(UC, audit)"]
+
+  ALERT(["guardrail alert<br/>(this model + version)"]) --> ABORT["abort immediately"]
+  ABORT --> CFGW3[("rollout_config.json<br/>rollback")]
+```
+
 ## Open questions
 
 None. The environment question (one definition vs one job per
