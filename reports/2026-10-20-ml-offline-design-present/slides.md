@@ -208,7 +208,7 @@ flowchart LR
   MON -.retrain.-> TR
 ```
 
-<div class="opacity-70 mt-4">five stages — each one gets a slide, briefly</div>
+<div class="opacity-70 mt-4">the map for what follows — deploy & roll out gets the most depth</div>
 
 <!--
 - ~1.5min, this is the map for the rest of Part 3
@@ -223,10 +223,9 @@ flowchart LR
 
 - Impression-level training data
 - Attribution labels (conversions)
-- Aggregate performance data
 - Decisions (from serving)
 
-<div class="opacity-70 mt-4">the first three: from the client, requirements fixed, delivery still open · decisions: ours already, via the serving contract</div>
+<div class="opacity-70 mt-4">the first two: from the client, requirements fixed, delivery still open · decisions: ours already, via the serving contract</div>
 
 <!--
 - ~2min, DE-lane audience cares most here
@@ -270,20 +269,140 @@ flowchart LR
 
 ## Train & calibrate
 
-<div class="h-6"></div>
+<div class="h-4"></div>
 
-- Gradient-boosted trees, exported to **ONNX**
-- Calibration **baked in**, versioned with the model as one pair
-- Gate before anything ships: ranking must not regress, calibration must
-  clear an absolute bound
+```mermaid
+flowchart LR
+  TS[("Training set")] --> FIT["Fit + calibrate"]
+  FIT --> EXP["Export + parity check<br/>(1e-4 Go/Python bound)"]
+  EXP --> ONNX[["model.onnx +<br/>manifest.json"]]
+  EXP --> REP[("calibration +<br/>parity reports")]
+  CFG["Model config"] --> REG
+  POL["Rollout policy"] --> REG
+  ONNX --> REG["Register<br/>model version"]
+  REP --> REG
+```
+
+<div class="opacity-70 mt-4">everything a model version needs ships together — nothing hand-written can drift from what trained</div>
 
 <!--
-- ~2min, MLE audience cares most here
-- LightGBM/XGBoost-style tabular model
-- Calibration: post-hoc (Platt/isotonic) + a base-rate correction if we
-  downsample negatives for training
-- Calibration is held to an ABSOLUTE bound, not just "better than before" —
-  the output gets multiplied by real money
+- ~2.5min, MLE audience cares most here
+- Gradient-boosted trees (LightGBM/XGBoost-style), fit then calibrated
+  (Platt/isotonic + a base-rate correction if we downsample negatives)
+- Export composes the full graph (prep + model + calibration) into one
+  ONNX file and checks it scores within 1e-4 of the Python reference —
+  that's the parity gate, training's own correctness check
+- Model config and rollout policy are read in from the DAG repo
+  (previous slide's training.yaml / rollout.yaml) and ride along,
+  registered onto this same model version
+- Registering the version is the hand-off: it's what triggers the
+  deployment job's registration branch (next slide)
+- Ranking/calibration non-inferiority is a DIFFERENT, later gate — the
+  deployment job's offline evaluate task, not something training itself
+  decides. Training measures and logs metrics here; it doesn't gate
+-->
+
+---
+
+## Two repos, one training pipeline
+
+<div class="h-6"></div>
+
+- **DAG repo** — the pipeline framework + every model's own definition
+  (schedule, model config, **rollout policy**)
+- **Workload repo** — one versioned, pipeline-agnostic package (training,
+  calibration, ETL, feature code) + the one deployment job
+
+<div class="opacity-70 mt-4">nothing model-specific lives in the workload repo — that's what keeps it reusable</div>
+
+<!--
+- ~1.5min
+- These are the two repos a training run comes out of: DAG repo holds
+  this model's definition (what/when/with what config), workload repo
+  holds the code that actually trains and calibrates
+- DAG repo: one folder per model pipeline, everything that differs model
+  to model lives here, including each model's rollout policy
+- Workload repo: the code itself, shared across all models, imported by
+  whichever pipeline needs it; also bundles the single standing deployment job
+- Separate from the serving repo entirely
+-->
+
+---
+
+## The training pipeline's files
+
+<div class="opacity-70 mb-2">inputs from the DAG repo, outputs registered onto the model version</div>
+
+DAG repo — per-model pipeline folder (input)
+
+```
+pipelines/training_pixel_purchase/
+├── dag.py
+├── pipeline.yaml          schedule, compute tier
+├── training.yaml          model configuration
+└── rollout.yaml           rollout policy
+```
+
+<div class="h-2"></div>
+
+S3 — model storage (output, once published)
+
+```
+<model_name>/
+├── v1/model.onnx          trained + calibrated, immutable
+├── v1/manifest.json       input schema, feature join spec
+├── v2/model.onnx
+├── v2/manifest.json
+└── rollout_config.json    champion · challenger · previous, mutable
+```
+
+<div class="opacity-70 mt-3">rollout policy is authored in the DAG repo, registered with the model version at training time — the deployment job reads it from the registry, not this repo</div>
+
+<!--
+- ~2min, sets up the next slide
+- Input side: the DAG repo folder is what the training run reads at
+  start — one folder per model pipeline, rollout.yaml sits next to
+  training.yaml (model config), same lifecycle, both model-specific
+- Output side: training produces model.onnx + manifest.json and
+  registers the version — the S3 layout shown here is the end state,
+  once the deployment job has published it (next slide)
+- One S3 folder per model slot. Version folders are immutable, one per
+  trained version, holding the artifact pair (model + manifest)
+- rollout_config.json is the one mutable file, sibling to the version
+  folders, not nested inside any of them — it doesn't belong to one version,
+  it points at whichever versions are champion/challenger right now
+- Important distinction: the DAG repo is where the policy is written and
+  versioned (git), but the deployment job never reads the DAG repo at
+  runtime — training registers the policy onto the model version, the
+  job reads it back from there. Same pattern as everything else the job
+  reads: always the registry or the touchpoints, never a repo checkout
+-->
+
+---
+
+## The deployment job is the bridge
+
+<div class="h-10"></div>
+
+```mermaid
+flowchart LR
+  MLF[("MLflow /<br/>Model Registry")] -- "reads" --> DJ["Deployment job"]
+  DJ -- "writes" --> S3[("S3")]
+  S3 -- "reads" --> SV[["ml_serving"]]
+```
+
+<div class="opacity-70 mt-6">ml_serving only ever talks to S3 — MLflow stays entirely on our side</div>
+
+<!--
+- ~1.5min
+- This is what turns the previous slide's input/output into the S3
+  layout shown there: training registers, the deployment job publishes
+- Deployment job is the only thing that reads MLflow/Unity Catalog
+  (aliases, approval tags) and the only thing that writes S3
+- ml_serving has no MLflow client, no Databricks dependency at all —
+  it only reads the rollout config and artifact files from S3
+- This is deliberate isolation: serving's dependency surface stays
+  Go + S3, nothing Python/Databricks-side can break it
 -->
 
 ---
@@ -341,25 +460,124 @@ flowchart LR
 
 ---
 
-## Monitor & retrain
+## What drives the rollout
 
 <div class="h-6"></div>
 
 ```mermaid
 flowchart LR
-  MON["Monitor:<br/>drift · calibration"] -->|breach| ACT["Recalibrate<br/>or retrain"]
-  ACT --> MON
+  SV[["Serving"]] -- "decision logs" --> ING["Decision-ingest job<br/>(scheduled)"]
+  ING -- "join + aggregate" --> TBL[("Readout table")]
+
+  REG(["new version<br/>registers"]) --> EEA["Evaluate → Export<br/>→ Advance"]
+  EEA --> ART[("model.onnx +<br/>manifest.json")]
+  SCHED(["schedule fires"]) --> RO["Readout pass<br/>(deployment job)"]
+  TBL --> RO
+  POL["Rollout policy"] --> RO
+  ALERT(["guardrail<br/>alert"]) --> ABORT["Abort<br/>immediately"]
+
+  EEA --> CFG[("Rollout config")]
+  RO -- "advance / hold / abort" --> CFG
+  ABORT --> CFG
 ```
 
-- Calibration breach → cheap **recalibrate-only** refresh
-- Drift breach → **full retrain**
+<div class="opacity-70 mt-4">one job, three triggers · nothing here is manual except the two gates</div>
 
 <!--
-- ~1.5min
-- Daily monitoring job computes calibration error, score drift, input drift,
-  defaulted-feature rate
-- Not every breach means retraining the trees — recalibration is cheaper and
-  handles most calibration drift
+- ~2.5min, platform/Go + QA audience cares most here
+- One deployment job, three things can trigger a run of it:
+  - a new version registering — runs evaluate/export/advance for that one
+    model. Export is what copies model.onnx + manifest.json to S3 — this is
+    the moment "The files involved" tree's version folders get created.
+    Advance writes the first rollout-config revision, then the run exits
+  - the standing schedule — the readout pass, sweeps every model's config,
+    checks it against the rollout policy and the readout table, advances/
+    holds/aborts
+  - a guardrail alert — skips the schedule, runs the abort path immediately
+    for that one model/version
+- Separately: decision-ingest job (own schedule) lands decision logs and
+  builds the readout table the readout pass reads — never decides anything
+- Rollout config is what serving actually reads — this is the only thing
+  that writes it (besides the two human approval gates from the last slide)
+-->
+
+---
+
+## Monitor & retrain
+
+<div class="h-4"></div>
+
+```mermaid
+flowchart LR
+  SV[["Serving"]] -- "decision logs" --> ING["Decision-ingest<br/>(scheduled)"]
+  ING --> DEC[("Decision rows")]
+  LBL[("Matured labels")] --> MM
+  DEC --> MM["Monitoring DAG<br/>(daily, per model)"]
+  REF[("Training run's<br/>reference distributions")] --> MM
+  MM -- "calibration breach" --> RECAL["Recalibrate-only"]
+  MM -- "drift breach" --> RETRAIN["Full retrain"]
+```
+
+<div class="opacity-70 mt-4">model quality, daily — serving-health guardrails (spend, latency, errors) run continuously in the observability stack, a separate system entirely</div>
+
+<!--
+- ~2min
+- Same decision-ingest job as the readout loop — one ingest, two
+  consumers (per-arm readout tables for rollouts, this for model quality)
+- Daily monitoring DAG, parametrized per model, runs after ingest and
+  label maturation. Computes: calibration error (reliability + ECE),
+  score drift (population stability index vs. the training run's logged
+  holdout distribution), input drift, defaulted-feature rate, cost per
+  action (reported only, never a trigger)
+- Thresholds live in that model's own workload YAML (DAG repo), not
+  hardcoded — same per-model pattern as the rollout policy
+- Calibration breach → cheap recalibrate-only (refit the calibrator,
+  reuse the trees). Drift breach → full retrain. Not every breach
+  retrains — recalibration handles most calibration drift
+- Two independently-scheduled systems, not one feeding the other: this
+  DAG runs once a day and only ever decides retraining — it never
+  touches a live rollout. Serving-health guardrails (spend/latency/
+  errors) are evaluated continuously by the observability stack
+  (CloudWatch/Datadog-style alerting), not this DAG, specifically
+  because an abort has to act in seconds, not wait for tomorrow's run.
+  That's why "What drives the rollout" draws the guardrail alert as its
+  own trigger, with no edge from this monitoring DAG at all
+-->
+
+---
+
+## How the guardrail alerts work
+
+<div class="h-10"></div>
+
+```mermaid
+flowchart LR
+  SV[["Serving"]] -- "latency · errors" --> OBS["Observability stack<br/>(CloudWatch / Datadog)"]
+  SPEND["Spend · win rate<br/>(source TBD)"] -.-> OBS
+  OBS -- "guardrail breached" --> DJ["Deployment job<br/>abort path"]
+```
+
+<div class="opacity-70 mt-6">latency + errors: continuous, agent-internal · spend + win rate: guardrails designed, data source still open with the client</div>
+
+<!--
+- ~2min
+- The named producer is the observability stack's own alert rules, not
+  any of our pipelines — the alert rule's action calls the deployment
+  job through the jobs API, which runs the abort path immediately
+- Latency, errors, defaulted-feature rate: the agent observes these
+  directly, genuinely continuous
+- Spend and win-rate guardrails are designed (spend anomaly, win-rate
+  collapse) but we don't yet know how fast that data reaches the agent.
+  We don't run the auction — win/delivery data's only confirmed path is
+  the client's curated feed, hourly at best. Whether a faster win-notice
+  signal exists is an open question for the client
+- Scoped to whichever model/version is currently mid-rollout — this
+  protects against a bad challenger, the champion isn't being watched
+  this way, it's the stable baseline
+- This is the third, independent alerting path in the design: pipeline
+  alerting (DAG/job failures), model-quality monitoring (this slide's
+  predecessor, daily), and this one — serving-health guardrails. None
+  of the three routes through either of the others
 -->
 
 ---
@@ -439,6 +657,8 @@ layout: section
 | Our own orchestration instance | ours; reuse-vs-new still open |
 | Fast key-value store for hot features | needed; exact service deferred |
 
+<div class="opacity-70 mt-4">no standing compute — pipelines submitted at trigger time only, nothing idle between runs</div>
+
 <!--
 - ~2min
 - "Confirmed" = the client told us this is the platform
@@ -446,23 +666,6 @@ layout: section
   not something the client mandated — worth being precise about this split
 - Orchestration: whether we reuse the client's instance or stand up our own
   is itself an open question
--->
-
----
-
-## New things to stand up
-
-<div class="h-6"></div>
-
-- A **pipeline-framework repo** — one folder per model pipeline
-- A **versioned workload package** — training, calibration, ETL, feature code
-- A **fast store** reachable by both our jobs and the serving agent
-- No standing compute — pipelines submitted at trigger time only
-
-<!--
-- ~1.5min
-- Two new repos, separate from the serving repo
-- Nothing model-specific lives in the workload package — keeps it reusable
 - "No standing compute": we don't keep clusters running between runs
 -->
 
@@ -537,19 +740,39 @@ layout: section
 
 ## The path forward
 
-<div class="h-6"></div>
+<div class="h-4"></div>
 
 ```mermaid
 flowchart LR
-  B["Resolve the<br/>2 blockers"] --> EDA["EDA on<br/>real data"] --> BUILD["Build the<br/>2 repos"] --> LIVE["First models live<br/>Page View · Purchase"]
+  SKEL["Repo skeletons<br/>(no AWS needed)"] --> EDA
+  TF["Terraform specs<br/>(no AWS needed)"] --> PROV
+  ACCT["AWS access<br/>(client's, or a temp account)"] --> PROV["Provision:<br/>MWAA · Databricks · Redis"]
+  PROV --> EDA
+  CLIENT["Client answers<br/>the 2 blockers"] --> EDA["EDA + fill in<br/>the real pipeline code"]
+  EDA --> LIVE["First models live"]
 ```
 
-<div class="opacity-70 mt-4">no fixed dates yet — still discovery phase</div>
+<div class="opacity-70 mt-4">two independent blockers, not one — access itself isn't the finish line either</div>
 
 <!--
-- ~2min
-- Once the client answers the two blockers, EDA starts on real data/samples
-- Build runs in parallel with EDA where it doesn't depend on answers
+- ~2.5min
+- Two separate things block real progress, not one: the client's
+  answers to the two open blockers, AND AWS access — we don't have the
+  client's account yet, and the temp sandbox account we're planning to
+  stand up for ourselves isn't secured either
+- Resolving the two blockers alone doesn't unlock anything without
+  account access too — that's why this isn't one chain
+- What moves regardless, starting now: the two repos' skeletons
+  (framework, schemas, CI — no real data or account needed) and
+  Terraform specs for provisioning, ready to apply the moment an
+  account exists
+- Getting AWS access isn't the finish line either — once we have it,
+  we still have to provision: apply the Terraform, stand up our MWAA
+  instance, configure the Databricks workspace (catalogs, compute,
+  MLflow/UC registry), get Redis reachable. That's why provisioning is
+  its own step, not folded into "access"
+- Once provisioned and the client has answered: EDA runs on real data,
+  and the skeletons get filled in with the actual processing code
 - Small serving-side asks get scheduled alongside their roadmap, not blocking us
 -->
 
@@ -562,7 +785,7 @@ layout: center
 <div class="h-6"></div>
 
 - The design is **complete and concrete** — not a sketch
-- **Two client answers** unlock EDA and the build
+- **Two client answers, plus AWS access** unlock EDA and the real build
 - The contract with serving is **fixed** — both sides build in parallel
 
 <div class="h-10"></div>
