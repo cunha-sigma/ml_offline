@@ -34,13 +34,13 @@ Custom Bidding Agent · ML Lane · 2026
 
 - What's already **decided**, and why
 - What the offline design is actually **made of**
-- What it needs from the team
+- What it needs from the team (help to review, please!)
 - What's still **open** — and what's blocking it
 
 <!--
 - ~1.5min, agenda as questions
 - Myth 1: it's a pipeline + a serving contract, not a notebook artifact
-- Myth 2: almost everything is settled; two named client answers unlock the rest
+- Myth 2: almost everything is settled; two named client answers plus AWS access unlock the rest
 - Audience: DE, ML, platform/Go dev, QA — I'll flag which parts matter most to whom as we go
 -->
 
@@ -296,7 +296,7 @@ flowchart LR
   (previous slide's training.yaml / rollout.yaml) and ride along,
   registered onto this same model version
 - Registering the version is the hand-off: it's what triggers the
-  deployment job's registration branch (next slide)
+  deployment job's registration branch ("What drives the rollout", later)
 - Ranking/calibration non-inferiority is a DIFFERENT, later gate — the
   deployment job's offline evaluate task, not something training itself
   decides. Training measures and logs metrics here; it doesn't gate
@@ -488,8 +488,9 @@ flowchart LR
 - One deployment job, three things can trigger a run of it:
   - a new version registering — runs evaluate/export/advance for that one
     model. Export is what copies model.onnx + manifest.json to S3 — this is
-    the moment "The files involved" tree's version folders get created.
-    Advance writes the first rollout-config revision, then the run exits
+    the moment "The training pipeline's files" tree's version folders get
+    created. Advance writes the first rollout-config revision, then the
+    run exits
   - the standing schedule — the readout pass, sweeps every model's config,
     checks it against the rollout policy and the readout table, advances/
     holds/aborts
