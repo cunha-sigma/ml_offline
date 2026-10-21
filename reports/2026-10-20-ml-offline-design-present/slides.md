@@ -224,17 +224,21 @@ flowchart LR
 - Impression-level training data
 - Attribution labels (conversions)
 - Aggregate performance data
-- Delivery-control feed
-- Bidder-response data
+- Decisions (from serving)
 
-<div class="opacity-70 mt-4">what we <strong>require</strong> from these is fixed; who <strong>produces</strong> them is still open</div>
+<div class="opacity-70 mt-4">the first three: from the client, requirements fixed, delivery still open · decisions: ours already, via the serving contract</div>
 
 <!--
 - ~2min, DE-lane audience cares most here
-- Five curated datasets, proposed split, not yet finalized
+- Three client-sourced curated datasets, proposed split, not yet finalized
 - Open: does the client deliver these directly, or does our Data Engineer curate
   them from internal tables — that's one of the two real blockers (Part 6)
-- We only state requirements on these datasets, we don't design their provenance
+- We only state requirements on the client-sourced datasets, we don't design their provenance
+- Decisions = decision logs, already ours via the serving contract (Part 4) — not
+  a client dependency, listed here because it's a genuine pipeline input
+- Dropped from this slide on purpose: delivery-control feed (that's Pacing's
+  input, not ours) and bidder-response dataset (that's an OUTPUT we assemble
+  from decisions + other lanes' fields and send back to the client, not an input)
 -->
 
 ---
@@ -284,16 +288,48 @@ flowchart LR
 
 ---
 
+## Model versions: three roles, always
+
+<div class="h-6"></div>
+
+- **Champion** — serving all traffic today
+- **Challenger** — moving through the states below
+- **Previous** — yesterday's champion, kept for rollback
+
+<div class="h-4"></div>
+
+```mermaid
+flowchart LR
+  CHAL["Challenger"] -- "on promote" --> CHAMP["Champion"]
+  CHAMP -. "becomes" .-> PREV["Previous<br/>(rollback target)"]
+```
+
+<!--
+- ~1.5min, sets up the next slide
+- At any moment, up to 3 named versions exist for a model slot
+- On promote: challenger becomes champion, old champion becomes previous
+- On abort: config just points back at previous — cheap, no retrain needed
+- First version of a new model/goal: no champion yet, incumbent is the
+  non-ML baseline (bid = λ × Max CPM, i.e. P=1)
+-->
+
+---
+
 ## Deploy & roll out
 
 <div class="h-6"></div>
 
 ```mermaid
 flowchart LR
-  FL["Fleet load<br/>0%"] --> SH["Shadow"] --> CN["Canary"] --> AB["A/B"] --> RC["Rollout<br/>canary"] --> PR["Promote"]
+  FL["Fleet load<br/>0%"] --> SH["Shadow"]
+  SH -- "👤 approval" --> CN["Canary"]
+  CN --> AB["A/B"]
+  AB --> RC["Rollout<br/>canary"]
+  RC -- "👤 approval" --> PR["Promote"]
+  linkStyle 1,4 stroke:#d97706,stroke-width:3px
 ```
 
-<div class="opacity-70 mt-4">2 human approvals on the way up · automatic abort anywhere on a guardrail breach</div>
+<div class="opacity-70 mt-4">the challenger's path to becoming champion · auto-abort anywhere on a guardrail breach</div>
 
 <!--
 - ~2min, QA audience cares most here
