@@ -24,7 +24,13 @@ Everything a verdict reads comes from four places:
   rows joined with matured labels, aggregated per model, version, arm,
   and revision.
 - guardrail signals: spend, win rate, delivery, and the serving-side
-  health metrics (latency, errors, defaulted-feature rates).
+  health metrics (latency, errors, defaulted-feature rates). Latency,
+  errors, and defaulted-feature rate are agent-internal, continuous.
+  Spend, win rate, and delivery depend on auction-outcome data the
+  agent does not observe directly (open question 5) — the only
+  confirmed path for win rate and delivery is the client's curated
+  feed, hourly at best (`01_data_access.md`'s cadence tiers), not
+  continuous.
 
 The challenger, shadow, and routing capabilities this doc reads from
 are the serving repo's target design; its v0 ships champion-only. The
@@ -175,7 +181,12 @@ Always on, in every state, and never waiting for a human: spend
 anomaly on the challenger arm, win-rate collapse, serving error or
 latency breach, calibration blowout on early labels (realized
 conversion rate off the prediction by more than the configured
-multiple), defaulted-feature-rate spike. Any breach aborts: the
+multiple), defaulted-feature-rate spike. "Always on" holds without
+qualification for the serving-side signals (error, latency,
+defaulted-feature rate) — the agent observes those directly. Spend and
+win-rate guardrails inherit whatever cadence the underlying data
+arrives on, which is unconfirmed (open question 5); as specified they
+cannot fire faster than that data updates. Any breach aborts: the
 rollback branch of the promote task writes a config pointing at the
 previous version (`07_deployment_job.md`). Aborting is cheap and
 reversible by design — a rolled-back version can re-enter the loop
@@ -255,3 +266,11 @@ impressions purchased".
    until then A/B bake times are conservative.
 4. Which role holds the two approvals — a team decision, recorded when
    the job goes live.
+5. Spend and win-rate data provenance for the guardrails above: whether
+   the ad server gives the agent a real-time win-notice/price signal
+   (the client's own non-functional requirements list win/loss and
+   spend/pacing as agent-monitorable, alongside clearly-synchronous
+   metrics, which hints one exists) or whether the agent only ever
+   learns win/spend outcomes through the hourly curated feed. The
+   client can answer; until then, the spend and win-rate guardrails
+   above are designed but their actual latency floor is unknown.
