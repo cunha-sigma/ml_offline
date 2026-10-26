@@ -49,7 +49,7 @@ flowchart TB
     TS["Training set<br/>point-in-time join of features and labels"]
     TRAIN["Training, calibration, ONNX export<br/>MLflow tracking"]
     REG["UC model registry"]
-    DEPLOYJOB["Deployment job (Databricks)<br/>evaluate, export, advance rollout,<br/>read out, promote or roll back<br/>+ scheduled readout passes"]
+    DEPLOYJOB["Deployment job (Databricks)<br/>claim, export, advance rollout,<br/>read out, promote or roll back<br/>+ scheduled readout passes"]
     HOTDAG["Hot-feature jobs (batch)"]
     FTAB[("derived.feature_<model>_*<br/>materialized aggregates")]
     ROUT[("derived.readout_* +<br/>monitoring tables")]
@@ -108,7 +108,7 @@ working assumption to confirm, `03_labels.md`) joins to the attribution
 labels dataset to produce the label and, with the features, the next
 training set. The decision-log loop: the lib logs
 every scored candidate, the rows land in our landing zone, and they
-feed offline replay, the per-arm readout, and monitoring; they are
+feed the per-arm readout and monitoring; they are
 never the label universe, because a scored candidate may have lost the
 auction. The same rule covers the client's auction and bid data: the label
 universe is served impressions, because `P(Action | Impression)`
@@ -118,7 +118,8 @@ from the observability stack's own alert rules to the deployment job's
 abort path through the jobs API — never through the monitoring job
 above (`09_monitoring.md`). One Databricks deployment job, triggered
 when training registers a new version, owns the whole rollout: each
-rollout state (fleet load, shadow, canary, A/B, rollout canary) is
+rollout state (fleet load, shadow, canary ramp — A/B nested inside the
+ramp when a policy enables it) is
 just a content of the rollout config, and the job advances by writing successive
 revisions, reading out the per-arm tables between advances. It is the
 only writer of shared state.
@@ -201,8 +202,8 @@ Each component is owned by one detail doc.
 - Deployment job (`06_validation_promotion.md`,
   `07_deployment_job.md`) — one Databricks job attached to the
   registered model, triggered when a new version registers, one task per
-  step: evaluate (offline replay against logged decisions; sets the
-  challenger alias), export (the artifact pair to an immutable S3
+  step: claim (sets the challenger alias —
+  training already gated quality, no replay here), export (the artifact pair to an immutable S3
   path), advance the rollout (write the next config revision), read out
   (per-arm tables from decision rows and matured labels), promote or
   roll back (move the champion and previous aliases; rollback is a
@@ -258,7 +259,10 @@ rewritten.
 Path: `<model_name>/rollout_config.json`, sibling to that model's
 `v<version>/` artifact folders. One mutable JSON per model slot: `model_name`, monotonic `revision`,
 `updated_at` and `updated_by` for audit, `champion` (`version`, `uri`,
-`checksums` for both files), later `challenger` and `routing`. Slots
+`checksums` for both files), later `challenger` and `routing`, and
+later still `queued` (serving-side addition, not yet in the lib's
+schema; holds at most one version waiting on a busy slot — a newer
+registration overwrites it, not a FIFO backlog). Slots
 are named per goal, later per goal and window; the bidding agent groups
 each request's candidates by goal and calls the lib per slot, so a new
 goal is a new slot and config file, not an interface change. The lib
@@ -286,14 +290,16 @@ and the agent. The exact service choice is deferred.
 
 ### 4. Decision logs
 
-One row per scored candidate: model name, version, arm, config
-revision, request id, candidate id, probability, timestamp, the model
-inputs, the routing salt, the routing-unit value, and a per-candidate
-scored-versus-default flag. Rows join impressions and labels by
-`(request_id, candidate_id)`. Offline obligations: ingest
+One row per scored candidate. What the lib's `DecisionRecord` carries
+today: model name, version, arm, config revision, candidate id,
+probability, timestamp. What we also need and don't have yet (tracked
+in `OPEN_QUESTIONS.md`'s serving-side changes list): request id, the
+model inputs, the routing salt, the routing-unit value, and a
+per-candidate scored-versus-default flag. Rows join impressions and
+labels by `(request_id, candidate_id)` once request id lands. Offline obligations: ingest
 the rows into the dataset layers and build the per-arm readout tables
 the deployment job's readout pass judges. Decision logs also feed
-offline replay and monitoring, and are the raw material for the bidder
+monitoring, and are the raw material for the bidder
 response dataset the client wants back (`09_monitoring.md`); they are never the
 label universe. The serving side has not settled where the rows land:
 the lib exposes an async logger interface and its docs name an ingest

@@ -1,10 +1,10 @@
-**the client \| Project Brief**
+    **the client \| Project Brief**
 
 May 2026
 
 **About the client**
 
-[<u>the client</u>](https://www.universalads.com/?utm_source=chatgpt.com) is the client's parent company’s self-service advertising platform built to make premium TV advertising more accessible, measurable, and performance-driven for advertisers of all sizes.
+<u>the client</u> is the client's parent company’s self-service advertising platform built to make premium TV advertising more accessible, measurable, and performance-driven for advertisers of all sizes.
 
 The client was created to unlock new demand generation opportunities across the broader the client's parent company advertising portfolio by bringing together:
 
@@ -18,7 +18,7 @@ The client was created to unlock new demand generation opportunities across the 
 
 The platform is designed to make TV advertising as easy and actionable as search and social, while giving advertisers access to premium, brand-safe inventory at scale. This is a highly strategic initiative within the client's parent company Ads and represents a significant investment in building the next generation of performance advertising infrastructure for TV and streaming environments.
 
-The client team: [<u>James Borow</u>](https://www.linkedin.com/in/jamesborow/), [<u>Chris Lorenz</u>](https://www.linkedin.com/in/chris-lorenz-28b4a913/?skipRedirect=true), [<u>Martha Pavoni</u>](https://www.linkedin.com/in/maunderhill/?skipRedirect=true), [<u>Daniel Druger,</u>](http://linkedin.com/in/danieldruger/?skipRedirect=true)
+The client team: [redacted — four client team members' names and LinkedIn profiles removed]
 
 **What We’re Building**
 

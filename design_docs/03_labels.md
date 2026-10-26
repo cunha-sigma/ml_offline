@@ -15,7 +15,7 @@ configurations. The universe is `cleaned.impressions`, under our
 working assumption, to confirm with the client, that this dataset contains wins
 only — every row a served impression, a scored-but-lost candidate never
 in it. The client describes the dataset as "joined delivery, campaign, ad set,
-ad, creative, supply, bid, win, spend, and event-outcome data" without
+ad, creative, supply, bid, win, spend, and event outcome data" without
 stating it is wins-only (open question 3).
 
 The universe is served impressions by definition: `P(Action |

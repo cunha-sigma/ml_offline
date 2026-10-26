@@ -20,7 +20,7 @@ phrased to send.
 | Does the ad server give the agent a real-time win-notice/price signal, or only the hourly curated feed | the spend and win-rate guardrails' actual latency floor | `06_validation_promotion.md` OQ5 |
 | Candidates-per-request distribution (median, average, p99, max); volume figures if available | serving capacity sizing; A/B arm-size math | `CLIENT_QUESTIONS.md`; standing discovery ask |
 | Sanitized premium-video bid-request samples (current fixtures are banner) | feature availability at bid time on real traffic | standing discovery ask |
-| Observed baseline conversion rates per goal | first-model plausibility checks in the offline gate | `06_validation_promotion.md` OQ1 |
+| Observed baseline conversion rates per goal | training's absolute gate thresholds and rollout bake times | `06_validation_promotion.md` OQ1 |
 | MWAA: reuse the client's instance or run our own | where DAG code deploys; dev's instance | `08_orchestration_repos.md` OQ1 |
 | Bidder response dataset: required fields, cadence, consumers | the export job's shape (assembly already designed) | `01_data_access.md` OQ4, `09_monitoring.md` OQ4 |
 
@@ -38,6 +38,7 @@ phrased to send.
 | High-cardinality categorical encoding (vocabulary + out-of-vocabulary vs. hashing) | the in-graph encoder | `05_training.md` OQ4 |
 | Maturity margin value; how attribution-reprocessing events are detected | label finality; backfill triggering | `03_labels.md` OQ4 |
 | Freshness budget per feature (staleness each feature tolerates) | per-feature cadences and TTLs | `04_features.md` OQ1 |
+| A/B cost and duration (depends on label maturity speed — hours vs. the full attribution window) | whether A/B stays reserved for high-risk experiments or becomes cheap enough to use more often | `06_validation_promotion.md` OQ6 |
 
 ## Ours — team decisions, no external dependency
 
@@ -50,6 +51,7 @@ phrased to send.
 | CI tooling; where versioned wheels publish | team (+ client environment) | `08_orchestration_repos.md` OQ2 |
 | Repo hosting (client organization or ours) | team + client | `08_orchestration_repos.md` OQ4 |
 | Dev/prod account topology (working assumption: same account) | team + infra | `08_orchestration_repos.md` OQ5 |
+| Queue race condition: two versions registering for the same slot near-simultaneously could both read it as free and both try to claim it | confirming the revision-bump write path actually rejects the loser rather than assuming only one writer ever runs | `07_deployment_job.md` OQ1 |
 
 ## Serving-side changes to schedule ([ml_serving](https://github.com/cunha-sigma/ml_serving))
 
@@ -60,7 +62,7 @@ here already assume these shapes.
 |---|---|
 | Decision rows carry request id, model inputs, routing salt, routing-unit value, and a per-candidate scored-versus-default flag (the row in `00_overview.md`, touchpoint 4) | label joins, replay, sample-ratio checks, per-candidate defaulted rates |
 | The scoring response carries per-candidate metadata: goal (and window) answered, model identity, scored-versus-default flag | the bid-decision step and decision reconstruction |
-| Rollout-config conventions for the fleet-load, A/B, and rollout-canary states | the deployment job's advance writes |
+| Rollout-config conventions for the fleet-load, shadow, and canary-ramp states (A/B nested inside the ramp when a policy enables it), plus the `queued` field | the deployment job's advance writes |
 | Per-arm/version dimensions on the lib's metrics; shadow sampling and drop counters | per-arm health reads; the shadow readout |
 | S3 sources for the rollout config and artifacts (or an S3-to-file sync) | the deployment job writes S3; the lib must read it |
 | Staged config propagation and alarm-rollback ownership | safe config rollout at fleet scale |
