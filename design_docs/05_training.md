@@ -75,8 +75,8 @@ flowchart LR
   HPO["2 hyperparameter tuning<br/>(per-run optional)"]
   FIT["3 final fit<br/>GBDT per goal"]
   CAL["4 calibration fit<br/>holdout, true base rate"]
-  EVAL["5 evaluation<br/>metrics, no gates"]
-  EXP["6 export + parity<br/>compose graph, 1e-4 gate"]
+  EVAL["5 evaluation<br/>ranking + calibration gate"]
+  EXP["6 export + parity + latency<br/>compose graph, 1e-4 + budget gates"]
   ART[/"model.onnx + manifest.json<br/>+ calibration and parity reports<br/>(MLflow run artifacts)"/]
   REG["7 register in Unity Catalog<br/>handoff to the deployment job"]
 
@@ -203,16 +203,17 @@ artifact per window (see Run modes).
 
 ## Evaluation
 
-Metrics, not gates: this stage measures and logs; thresholds, offline
-replay against logged decisions, and promotion verdicts belong to the
-deployment job's decision logic (`06_validation_promotion.md`).
+A gate: ranking and calibration are checked against absolute
+thresholds, configured per model. Fail → the run stops here: nothing
+registers, nothing downstream runs, an alert fires.
 
 On the evaluation holdout:
 
 - ranking — AUC and PR-AUC (PR-AUC is the informative one at these
-  base rates).
+  base rates) against an absolute floor.
 - calibration — reliability curve and expected calibration error,
-  computed on the corrected, calibrated output.
+  computed on the corrected, calibrated output, against an absolute
+  floor.
 - standard cuts — the same metrics by advertiser (per-advertiser
   calibration error is the signal that tells us when the advertiser
   layer earns activation), by campaign, and by time slice within the
@@ -222,7 +223,14 @@ On the evaluation holdout:
   short-window score across segments. Stable supports calibrating up;
   unstable means that window needs its own trained model.
 
-All metrics land in the MLflow run.
+All metrics land in the MLflow run. Threshold values are set per
+model configuration.
+
+A rollout policy's A/B stage (`06_validation_promotion.md`), when a
+policy enables one, re-introduces a champion-relative comparison —
+live, not offline replay. This gate and that one answer different
+questions: this one asks "is the model good," A/B asks "is it better,
+measured against what's currently live."
 
 ## Export, parity, registration
 
@@ -242,6 +250,10 @@ All metrics land in the MLflow run.
   scored on held-out rows and the run fails if max |diff| exceeds 1e-4.
   The serving repo applies the same tolerance in its dev-scale smoke
   test ([ml_serving](https://github.com/cunha-sigma/ml_serving)).
+- Inference latency is also a hard gate at this step, same moment as
+  parity, different property (speed, not correctness): the exported
+  graph is timed, and the run fails if it exceeds the configured
+  budget.
 - `model.onnx`, `manifest.json`, the calibration report, the parity
   report, and the monitoring references — the holdout score
   distribution and per-feature input distributions with null shares

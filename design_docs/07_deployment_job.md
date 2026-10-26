@@ -25,12 +25,13 @@ them, and this job only reacts to the registration that results.
 ## Task structure
 
 Five tasks. Tasks 3 and 4 loop: each pass through them is one rollout
-state (fleet load at 0%, shadow, canary, A/B, rollout canary).
+state (fleet load at 0%, shadow, canary ramp — A/B nested inside the
+ramp when the policy enables it, `06_validation_promotion.md`).
 
-1. Evaluate — offline replay: score the new version on logged decisions
-   joined with matured labels, and set the registry's challenger alias
-   on a pass. Metrics and pass/fail thresholds:
-   `06_validation_promotion.md`.
+1. Claim — sets the registry's challenger alias on the newly
+   registered version. There's no evaluation here: that already
+   happened in training (`05_training.md`), before the version was
+   allowed to register.
 2. Export — publish the ONNX artifact (named per the manifest's
    `onnx.file`; convention `model.onnx` — the rollout config's
    `checksums` map is keyed by on-disk filename, so the key must equal
@@ -54,10 +55,11 @@ state (fleet load at 0%, shadow, canary, A/B, rollout canary).
    (`06_validation_promotion.md`). On abort at any state, roll back
    instead: write a config pointing at the previous version.
 
-Two approval gates are fixed by `06_validation_promotion.md` — before
-the first live exposure (shadow to canary) and before final promotion —
-held by the readout pass until the model version carries the approval
-tag (Execution model, below).
+Gate 2, before final promotion, is fixed by `06_validation_promotion.md`
+for every policy. Gate 1, before the first live exposure (shadow to
+canary), is a policy parameter — off by default. Either way, an active
+gate holds the readout pass until the model version carries the
+approval tag (Execution model, below).
 
 ## The writes
 
@@ -137,11 +139,11 @@ sleeps through them:
   third trigger, monitoring alerts, runs this branch's abort path
   immediately, so a guardrail breach never waits for the schedule.
 
-Compute is declared per task. Evaluate carries the job's only heavy
-cluster spec, sized to the model, and never runs as a no-op — its
-trigger means real work exists. The scheduled branch contains no
-inference or heavy computation by construction, so it runs on
-serverless or a smallest-instance node whatever the model's size; an
+Compute is declared per task, and every task here is light: registry
+reads/writes, a file copy, a config write, or a query against
+pre-aggregated tables. No task runs inference at the model's own
+scale — that work happens in training. Serverless or a
+smallest-instance node covers every task regardless of model size; an
 idle pass costs seconds.
 
 State and idempotency: no state store exists beyond the touchpoints —
@@ -171,7 +173,9 @@ Slot discovery for the scheduled branch: list the known config prefix
 
 ```mermaid
 flowchart LR
-  REG(["new version<br/>registers"]) --> EEA["Evaluate → Export → Advance<br/>(this model only)"]
+  REG(["new version<br/>registers"]) --> SLOTCHECK{"slot free?"}
+  SLOTCHECK -- "yes" --> EEA["Claim → Export → Advance<br/>(this model only)"]
+  SLOTCHECK -- "no" --> ENQUEUE[("write to queued")]
   EEA --> CFGW1[("rollout_config.json<br/>first revision")]
 
   SCHED(["schedule fires"]) --> LIST["list the config prefix"]
@@ -188,8 +192,53 @@ flowchart LR
   ABORT --> CFGW3[("rollout_config.json<br/>rollback")]
 ```
 
+## Concurrency and queueing
+
+Only one challenger per model slot. Two things can make it busy when a
+new version registers: an experiment's A/B freezing promotion for days
+while scheduled or alert-triggered retrains keep happening underneath
+(`06_validation_promotion.md`), or the fast policy itself being slower
+than the retrain cadence even with no A/B involved.
+
+Either way, the slot-free check above is the mechanism: busy means the
+new version's identity and registration time are written to `queued`
+on that slot's `rollout_config.json`, and the run exits without
+running claim or export — there's no free slot for either task to act
+on yet. `queued` holds at most one version, not a growing backlog: a
+new registration while the slot is still busy overwrites whatever was
+there, it doesn't add to it.
+
+When the slot resolves (promote or abort), the scheduled pass checks
+`queued` and, if set, triggers that version's registration-branch work
+through the jobs API — the same self-trigger pattern the alert branch
+already uses.
+
+```mermaid
+flowchart LR
+  RESOLVE["slot resolves<br/>(promote or abort)"] --> CHECKQ{"queued<br/>set?"}
+  CHECKQ -- "yes" --> POP["trigger queued version<br/>via jobs API"]
+  CHECKQ -- "no" --> IDLE["slot stays free"]
+```
+
+Superseding happens the moment a newer version registers, not when the
+slot finally resolves: if N+1 is queued and N+2 registers while the
+slot is still busy, N+2 overwrites N+1 right then — N+1 is gone well
+before the slot ever resolves, not filtered out afterward. It never
+aborts a version that's already running its claim/export/advance or sitting through
+shadow and canary — only "latest wins" among whoever is still waiting.
+Aborting in-flight work instead would livelock a slot whose retrain
+cadence outpaces its own bake time: nothing would ever finish.
+
 ## Open questions
 
-None. The environment question (one definition vs one job per
-environment) is settled by `08_orchestration_repos.md`: one definition,
+1. Queue race condition: if two versions register for the same slot
+   near-simultaneously, both could read the config, both see the slot
+   as free, and both try to claim it. The write path already increases
+   `revision` and validates before writing (The writes, above) — needs
+   confirming that this actually rejects the loser and forces a retry,
+   not just that revisions happen to increase under the assumption
+   only one writer ever runs at a time.
+
+Nothing else open. The environment question (one definition vs one job
+per environment) is settled by `08_orchestration_repos.md`: one definition,
 instantiated per environment by Asset Bundle targets.

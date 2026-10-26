@@ -2,27 +2,21 @@
 
 The decision logic of the deployment job. One job, two docs:
 `07_deployment_job.md` owns the mechanics (tasks, triggers, writes);
-this doc owns what the tasks decide on — the offline gate, the per-state
-readout verdicts, the guardrails, and where humans approve. The client's
-own open questions ask how calibration should be evaluated and what
-makes a model ready to launch; this doc defines exactly that, and the
-Launch readiness section is written to be sent as the answer.
+this doc owns what the tasks decide on — the rollout policy, the
+per-state readout verdicts, the guardrails, and where humans approve.
 
 ## Decision inputs
 
-Everything a verdict reads comes from four places:
+Everything a verdict reads comes from three places:
 
-- the training run's own holdout metrics (`05_training.md`), already
-  logged with the registered version. A version that failed training's
-  export parity gate never registers, so the job can assume the
-  artifact is sound and the holdout metrics are present.
-- offline replay, computed by the evaluate task: champion and challenger
-  scored on the same rows — logged decisions joined with matured labels
-  — so the comparison holds the traffic constant and varies only the
-  model.
+- the training run's own gate (`05_training.md`): ranking and
+  calibration checked against absolute thresholds before the version
+  ever registers. A version that fails never registers, so the job can
+  assume quality is already settled.
 - the per-arm readout tables (`09_monitoring.md` builds them): decision
   rows joined with matured labels, aggregated per model, version, arm,
-  and revision.
+  and revision. This is also where an enabled A/B's champion-versus-
+  challenger comparison is read from.
 - guardrail signals: spend, win rate, delivery, and the serving-side
   health metrics (latency, errors, defaulted-feature rates). Latency,
   errors, and defaulted-feature rate are agent-internal, continuous.
@@ -43,11 +37,16 @@ sibling of the model configuration in the pipeline's definition folder,
 registered with the model version alongside it
 (`08_orchestration_repos.md`):
 
-- thresholds — the gate and readout bounds listed in the sections below;
-  values are per model because base rates and volumes differ per goal.
+- thresholds — the readout bounds listed in the sections below; values
+  are per model because base rates and volumes differ per goal.
 - bake times — minimum time in each state before a verdict, and the
   maximum hold (below).
-- traffic — canary, A/B, and rollout-canary percentages.
+- canary ramp — shape and the traffic level that counts as the
+  promotion point.
+- gate 1 — on or off. Off (the default) auto-proceeds once shadow's
+  bake time is green; on holds for a human before the first live bid.
+- A/B — on or off. Off is the common case (see Retraining modes); on
+  adds the A/B test definition below to the ramp.
 - evidence mode — what promotion waits for: `full_window` or `proxy`
   (see Evidence modes). Per model and per change: a routine refresh of
   an incumbent can reasonably promote on proxy evidence, a new model or
@@ -55,57 +54,29 @@ registered with the model version alongside it
   rule: recalibrate-only runs default to `proxy`, first versions of a
   model default to `full_window`.
 
-Approval placement is fixed for all models and is not part of the
-policy (see Approval gates).
+Gate 2 (promote) is fixed for every policy and is not part of the
+policy (see Approval gates). That is, no model goes to PRD unattended.
 
-## The offline gate (evaluate task)
+## Retraining modes
 
-Pass sets the registry's challenger alias; fail stops the run before
-anything is exposed. The gate compares the challenger to the current
-champion on the replay rows:
+Three things trigger a new version; each maps to a rollout policy.
+Training mode and rollout policy are independent — the mapping below
+is what a human picks, not a rule the system infers from how a version
+was trained.
 
-- ranking — PR-AUC not worse than the champion by more than the
-  configured margin (a non-inferiority bound, not a
-  must-beat-the-champion bound: a refresh that merely matches the
-  champion on fresher data is a pass).
-- calibration — absolute floors, not champion-relative: expected
-  calibration error within bound, and the reliability curve within
-  tolerance per decile. Calibration is held to absolute standards
-  because the output is multiplied by money; a well-ranked but
-  miscalibrated model fails here no matter how the champion looks.
-- per-advertiser calibration — the same calibration bounds per
-  advertiser, volume-tiered: advertisers with enough matured
-  conversions are judged individually, the rest in aggregate tiers, so
-  a tiny advertiser's noise can neither fail the gate nor hide a real
-  miscalibration among large ones. This cut is also the standing signal
-  for when per-advertiser calibration earns activation
-  (`05_training.md`).
-- score-distribution sanity — the challenger's score distribution on
-  replay traffic within expected shape (no mass at the extremes, no
-  degenerate constant output).
-- ranking invariance — only when the version is a window variant
-  calibrated up from a shorter window: the long-window conversion rate
-  must be a stable monotone function of the score across segments
-  (measured in `05_training.md`'s evaluation; re-checked here on replay
-  rows).
+| Trigger | What's different about the model | Rollout policy |
+|---|---|---|
+| Scheduled | Same architecture/features/HP — just a fresher training window | Gate 1 off, A/B off |
+| Alert (drift/calibration monitoring) | Usually nothing architectural — reacting to a detected problem | Same policy as scheduled, unchanged |
+| Engineer/experiment | Whatever the engineer changed — new feature, architecture, anything judged higher-risk | Gate 1 as chosen, A/B on |
 
-Where the gate's inference runs: inside the evaluate task, on that
-task's own Databricks job compute (CPU), never through the serving
-fleet. The champion is not re-scored — its probabilities are already in
-the decision rows. The challenger is batch-scored: the published
-`model.onnx` loaded with ONNX Runtime over the logged inputs,
-Spark-distributed when volume demands it — the same self-contained file
-serving runs, so the replay scores match production's (the serving
-repo's smoke test bounds the Go-versus-Python runtime difference at
-1e-4).
+**Success criteria — what "good enough to ship" means per mode:**
 
-First version of a model, where no ML champion exists (the incumbent is
-the deterministic max-CPM path, which produces no probabilities to
-compare against): the relative checks are replaced by absolute ones —
-the calibration floors as above, plus plausibility against observed
-baseline conversion rates (a standing ask to the client). The gate is
-deliberately stricter in absolute terms when there is no champion to
-lean on.
+| Mode | To become champion, must... |
+|---|---|
+| Scheduled | Clear training's absolute gate (ranking, calibration, latency) → shadow green (no distribution anomalies) → canary ramp green (guardrails: spend, win-rate, latency, errors) through the promotion point |
+| Alert-triggered | Same bar as scheduled. The gate is absolute, not champion-relative — it doesn't matter that champion is the thing that drifted |
+| Experiment | Same training gate, plus a clean A/B: guardrails green for the full bake, calibration/ranking within the A/B's own bounds, non-inferior to champion (trusted only if champion itself is healthy). "Genuinely better" is never a gate condition — read from the A/B numbers afterward, not required to ship |
 
 ## Rollout states and readout
 
@@ -114,27 +85,19 @@ produces one verdict: continue, hold, or abort.
 
 ```mermaid
 flowchart LR
-  OG["offline gate (evaluate task)<br/>replay: logged decisions +<br/>matured labels"] --> FL["fleet load (0%)"]
-  OG -. fail .-> ST["stop<br/>(nothing was exposed)"]
-  FL --> SH["shadow"]
-  SH --> G1{"approval 1"}
-  G1 --> CA["canary (small %)"]
-  CA --> AB["A/B"]
-  AB --> RC["rollout canary (high %)"]
-  RC --> G2{"approval 2"}
-  G2 --> PR["promote"]
+  FL["fleet load (0%)"] --> SH["shadow"]
+  SH --> G1{"gate 1<br/>optional"}
+  G1 --> CA["canary ramp<br/>to promotion point"]
+  CA -. if A/B enabled .-> AB["A/B"]
+  AB -. feeds back .-> CA
+  CA --> G2{"gate 2<br/>mandatory"}
+  G2 --> RAMP["ramp to 100%"]
+  RAMP --> PR["promote"]
   FL -. abort .-> RB["rollback"]
   SH -. abort .-> RB
   CA -. abort .-> RB
   AB -. abort .-> RB
-  RC -. abort .-> RB
 ```
-
-The offline gate is part of the rollout, not of training: it runs inside
-the deployment job, on values replayed through the registered model from
-logged serving decisions. The training-time evaluation
-(`05_training.md`) happened before registration, on the training
-snapshot; passing it is what allowed the version to register at all.
 
 - Fleet load (0% traffic) — the artifact loads fleet-wide without
   scoring anyone. Reads what is observable at 0%: the lib's
@@ -149,23 +112,14 @@ snapshot; passing it is what allowed the version to register at all.
   field), latency contribution, and sampling integrity.
   Continue when distributions are stable and health is green for the
   bake time.
-- Canary (small percentage) — the first live bids. Reads: the delivery
-  guardrails (spend, win rate against the champion arm), realized
-  calibration on the shortest available window's labels (predicted
-  versus observed conversion rate on the canary arm), and a
-  sample-ratio check — the observed arm split must match the configured
-  split; a mismatch means the routing is broken, which invalidates the
-  readout rather than judging the model.
-- A/B — the powered comparison, champion versus challenger at the
-  configured split: per-arm realized calibration, cost per action
-  against the goal — read as an expected-performance signal, since the
-  client's objective is expected CPA, explicitly "not a guarantee of
-  observed CPA in every reporting period" — plus spend and delivery per
-  arm. The evidence mode decides which window this verdict waits for.
-- Rollout canary (high percentage) — a regression check at scale before
-  the full cut: checks the same metrics as the A/B state (per-arm
-  calibration, cost per action, delivery), at a traffic level that
-  exposes load- and mix-dependent problems.
+- Canary ramp — live bids, ramping up to the policy's promotion point.
+  Checks: delivery guardrails (spend, win rate vs. the champion arm),
+  realized calibration on whatever window has matured labels, and a
+  sample-ratio check.
+- A/B (only if the policy turns it on) — champion vs. challenger at a
+  configured traffic split, nested inside the canary ramp. Checks per
+  arm: realized calibration, cost per action vs. the goal, spend, and
+  delivery.
 
 Hold means the bake extends because the evidence is inconclusive — not
 enough matured labels or volume yet — and is bounded: past the maximum
@@ -175,34 +129,68 @@ Integrity rules apply throughout: the arms differ only in the model
 experiment's lifetime, and any sample-ratio mismatch voids the state's
 readout.
 
+## A/B test definition
+
+Only relevant when a policy's `ab_test` is on (Retraining modes: the
+experiment case).
+
+| Parameter | Definition |
+|---|---|
+| Metrics | ranking (absolute floor + margin vs. champion), calibration (absolute floor), cost-per-action vs. the goal — per arm |
+| Traffic split | configurable ratio + split key. Split key default: per-request (largest, fastest-accumulating sample). Coarser keys (per-advertiser, per-line-item) trade sample speed for exposure consistency — a deliberate choice per test, not a default |
+| Arm size | statistical power calculation — needs a baseline conversion rate and a minimum detectable effect (open question 3) |
+| Duration | derived, not set directly: evidence mode × arm size × actual traffic volume. `full_window` waits for the real attribution window to mature; `proxy` promotes on the shortest available window plus guardrails |
+
+## Concurrency during an active A/B
+
+Only one challenger per model slot, same invariant as always. While an
+experiment's A/B is in flight, promotion is frozen for that slot —
+champion has to stay fixed for the comparison to mean anything.
+Scheduled and alert-triggered retrains keep happening underneath and
+queue, the latest superseding whoever's waiting once the freeze lifts.
+Mechanics (the `queued` field, registration-time slot check, re-trigger
+on resolution): `07_deployment_job.md`.
+
 ## Guardrails and automated abort
 
-Always on, in every state, and never waiting for a human: spend
-anomaly on the challenger arm, win-rate collapse, serving error or
-latency breach, calibration blowout on early labels (realized
-conversion rate off the prediction by more than the configured
-multiple), defaulted-feature-rate spike. "Always on" holds without
-qualification for the serving-side signals (error, latency,
-defaulted-feature rate) — the agent observes those directly. Spend and
-win-rate guardrails inherit whatever cadence the underlying data
-arrives on, which is unconfirmed (open question 5); as specified they
-cannot fire faster than that data updates. Any breach aborts: the
-rollback branch of the promote task writes a config pointing at the
-previous version (`07_deployment_job.md`). Aborting is cheap and
-reversible by design — a rolled-back version can re-enter the loop
-after a fix — so the guardrails are tuned to fire early.
+Always on, every state, including after promotion — a champion is
+guarded for its whole life, not only its own rollout. No human needed
+to trigger an abort.
+
+| Signal | Fires as fast as |
+|---|---|
+| Serving error or latency breach | continuous — the agent observes it directly |
+| Defaulted-feature-rate spike | continuous — the agent observes it directly |
+| Spend anomaly (challenger arm) | the underlying data arrives (open question 5) |
+| Win-rate collapse | the underlying data arrives (open question 5) |
+| Calibration blowout on early labels (realized conversion rate off the prediction by more than a configured multiple) | labels mature |
+
+Any breach aborts: the promote task's rollback branch writes a config
+pointing at the previous version (`07_deployment_job.md`). Abort is
+cheap and reversible — a rolled-back version can re-enter the loop
+after a fix — so guardrails are tuned to fire early.
+
+Two manual controls exist alongside the automated path, available to a
+human independent of any breach:
+
+- **Red button** — trigger the abort path manually, at any point, for
+  anything a threshold wouldn't catch.
+- **Rollback button** — move champion → previous on demand, any time
+  after promotion, without needing a guardrail breach as the trigger.
 
 ## Approval gates
 
-Two manual gates, fixed for all models:
+Gate 2 (canary → promote) is fixed and mandatory for every policy —
+before the version becomes champion. This is the one invariant that
+never turns off: no version reaches the champion slot unattended.
 
-1. shadow → canary: before the version affects its first live bid.
-2. rollout canary → promote: before the version becomes the champion.
+Gate 1 (shadow → canary, before the first live bid) is a policy
+parameter, off by default (Retraining modes). When on, it holds the
+same way gate 2 does.
 
 Every other transition advances automatically when its state's metrics
 are green for the bake time. Aborts are always automated; a guardrail
-never waits for approval. No version reaches live traffic or the
-champion slot unattended, and nothing else requires a human.
+never waits for approval.
 
 ## Evidence modes
 
@@ -210,10 +198,10 @@ The label windows set the clock: a 7-day goal's outcomes are not
 measurable for a week, a 30-day goal's for a month. The evidence mode
 in the rollout policy decides how promotion handles that:
 
-- `full_window` — each labeled verdict (canary, A/B, rollout canary)
-  waits until the goal's own window plus margin has matured for enough
-  arm traffic. The strongest evidence and the slowest path; for a
-  30-day goal, impractically slow for routine refreshes.
+- `full_window` — each labeled verdict waits until the goal's own
+  window plus margin has matured for enough arm traffic. The strongest
+  evidence and the slowest path; for a 30-day goal, impractically slow
+  for routine refreshes.
 - `proxy` — verdicts read the shortest offered window's labels (the
   1-day variant the client's ML report names — absent from the batch-01
   data models, so confirming it is part of the windows question — or
@@ -234,25 +222,22 @@ policy says — the gate enforces it.
 
 ## Launch readiness
 
-The compact statement, written to be sent to the client as our answer
-to their calibration-evaluation and launch-readiness question:
+A model version is ready to serve when, in order:
 
-A model version is ready to serve when, in order: its training run
-passed the export parity gate and its holdout metrics were logged; the
-offline gate passed against the incumbent on replayed production
-traffic (ranking non-inferior, calibration within absolute bounds
-overall and per advertiser tier); it ran in shadow on live traffic
-without distribution or health anomalies; its realized calibration on
-live, purchased impressions stayed within tolerance over the configured
-evidence window; and the delivery guardrails stayed green through
-canary, A/B, and rollout canary — with a human approving the first
-live exposure and the final promotion. Calibration is evaluated on won
-impressions: the readouts join served impressions to their outcomes,
-which is the population cost per action is necessarily computed over
-(spend only happens on wins). This covers the client's evaluation
-question "including on purchased impressions" and their goal-CPA
-assumption that the model is "appropriately calibrated for the
-impressions purchased".
+1. its training run passed the export parity, latency, ranking, and
+   calibration gates
+2. it ran in shadow on live traffic with no distribution or health
+   anomalies
+3. its realized calibration on live, won impressions stayed within
+   tolerance over the configured evidence window
+4. the delivery guardrails stayed green through the canary ramp,
+   including A/B when the policy runs one
+5. a human approved the final promotion — and the first live exposure
+   too, when gate 1 is on
+
+Calibration is evaluated on won impressions: the readouts join served
+impressions to their outcomes, the same population cost per action is
+computed over, since spend only happens on wins.
 
 ## Open questions
 
@@ -274,3 +259,8 @@ impressions purchased".
    learns win/spend outcomes through the hourly curated feed. The
    client can answer; until then, the spend and win-rate guardrails
    above are designed but their actual latency floor is unknown.
+6. A/B cost and duration are unknown — they depend entirely on how
+   fast labels mature. If maturity is a matter of hours, A/B is cheap
+   and viable often; if it needs the full attribution window, it's
+   expensive and should stay reserved for genuinely high-risk changes.
+   Don't assume either regime until EDA says which one we're in.
