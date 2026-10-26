@@ -1,4 +1,4 @@
-# UA_Technical Debt Register
+# Technical Debt Register
 
 
 ## Sheet: Аркуш1

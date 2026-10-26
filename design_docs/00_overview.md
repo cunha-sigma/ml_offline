@@ -49,7 +49,7 @@ flowchart TB
     TS["Training set<br/>point-in-time join of features and labels"]
     TRAIN["Training, calibration, ONNX export<br/>MLflow tracking"]
     REG["UC model registry"]
-    DEPLOYJOB["Deployment job (Databricks)<br/>evaluate, export, advance rollout,<br/>read out, promote or roll back<br/>+ scheduled readout passes"]
+    DEPLOYJOB["Deployment job (Databricks)<br/>claim, export, advance rollout,<br/>read out, promote or roll back<br/>+ scheduled readout passes"]
     HOTDAG["Hot-feature jobs (batch)"]
     FTAB[("derived.feature_<model>_*<br/>materialized aggregates")]
     ROUT[("derived.readout_* +<br/>monitoring tables")]
@@ -202,7 +202,7 @@ Each component is owned by one detail doc.
 - Deployment job (`06_validation_promotion.md`,
   `07_deployment_job.md`) — one Databricks job attached to the
   registered model, triggered when a new version registers, one task per
-  step: evaluate (confirms the version; sets the challenger alias —
+  step: claim (sets the challenger alias —
   training already gated quality, no replay here), export (the artifact pair to an immutable S3
   path), advance the rollout (write the next config revision), read out
   (per-arm tables from decision rows and matured labels), promote or
@@ -260,7 +260,8 @@ Path: `<model_name>/rollout_config.json`, sibling to that model's
 `v<version>/` artifact folders. One mutable JSON per model slot: `model_name`, monotonic `revision`,
 `updated_at` and `updated_by` for audit, `champion` (`version`, `uri`,
 `checksums` for both files), later `challenger` and `routing`, and
-`queued` (at most one version waiting on a busy slot — a newer
+later still `queued` (serving-side addition, not yet in the lib's
+schema; holds at most one version waiting on a busy slot — a newer
 registration overwrites it, not a FIFO backlog). Slots
 are named per goal, later per goal and window; the bidding agent groups
 each request's candidates by goal and calls the lib per slot, so a new
@@ -289,11 +290,13 @@ and the agent. The exact service choice is deferred.
 
 ### 4. Decision logs
 
-One row per scored candidate: model name, version, arm, config
-revision, request id, candidate id, probability, timestamp, the model
-inputs, the routing salt, the routing-unit value, and a per-candidate
-scored-versus-default flag. Rows join impressions and labels by
-`(request_id, candidate_id)`. Offline obligations: ingest
+One row per scored candidate. What the lib's `DecisionRecord` carries
+today: model name, version, arm, config revision, candidate id,
+probability, timestamp. What we also need and don't have yet (tracked
+in `OPEN_QUESTIONS.md`'s serving-side changes list): request id, the
+model inputs, the routing salt, the routing-unit value, and a
+per-candidate scored-versus-default flag. Rows join impressions and
+labels by `(request_id, candidate_id)` once request id lands. Offline obligations: ingest
 the rows into the dataset layers and build the per-arm readout tables
 the deployment job's readout pass judges. Decision logs also feed
 monitoring, and are the raw material for the bidder

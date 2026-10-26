@@ -23,7 +23,7 @@ crosses the account boundary:
   budget, status, targeting, and override state. The pacing and
   ingestor lanes' input; not ours directly.
 - Impression-level training dataset — joined delivery, campaign, ad
-  set, ad, creative, supply, bid, win, spend, and event-outcome data
+  set, ad, creative, supply, bid, win, spend, and event outcome data
   (the client's wording). Our working assumption, to confirm: it is wins-only,
   every row a served impression — the client's description does not say so.
   This is the training and label universe, our primary input

@@ -133,10 +133,11 @@ repo (the bundle is the job's definition files, not the job itself). It
 is factory machinery: generic, model-agnostic, its per-model inputs
 arriving from the registry — so it belongs to the workload repo.
 `resources/deployment_job.yml` defines the job: its two execution
-branches, picked per run by the trigger (registration → evaluate,
+branches, picked per run by the trigger (registration → claim,
 export, first advance; schedule → one readout pass that advances,
 holds, or aborts — `07_deployment_job.md`, Execution model), the
-readout compute, the evaluate cluster spec, and the schedule. A third
+per-task compute (every task is light — no task runs inference at the
+model's own scale, that happens in training), and the schedule. A third
 trigger exists at runtime: a monitoring alert (`09_monitoring.md`)
 starts a run of this same job through the jobs API, executing the
 abort path immediately instead of waiting for the next scheduled pass.

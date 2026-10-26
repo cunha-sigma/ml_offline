@@ -131,7 +131,7 @@ definition with two branches, chosen by a head condition task on the
 trigger type, because a rollout spans days of bake time and no run
 sleeps through them:
 
-- registration-triggered branch — evaluate, export, advance (the first
+- registration-triggered branch — claim, export, advance (the first
   config revision); then the run exits.
 - scheduled branch — one readout task: read the config state, the
   model-version tags, and the pre-aggregated per-arm tables; then write
@@ -216,7 +216,7 @@ already uses.
 ```mermaid
 flowchart LR
   RESOLVE["slot resolves<br/>(promote or abort)"] --> CHECKQ{"queued<br/>set?"}
-  CHECKQ -- "yes" --> POP["trigger queued version<br/>via jobs API"]
+  CHECKQ -- "yes" --> TRIGGER["trigger queued version<br/>via jobs API"]
   CHECKQ -- "no" --> IDLE["slot stays free"]
 ```
 

@@ -158,18 +158,17 @@ toward the general fit, baked into the same artifact); export
 validation bar; label/feature config lineage with the model version.
 
 `06_validation_promotion.md` — the decision logic of the Databricks
-deployment job (one job, two docs with `07`): evaluation gates, per-arm
-readout, promotion/rollback verdicts, approval placement.
-Settles: metrics and thresholds, including per-advertiser calibration
+deployment job (one job, two docs with `07`): rollout policy, per-arm
+readout, promotion/rollback verdicts, approval placement. Ranking and
+calibration gates themselves live in `05_training.md`, before a
+version ever registers.
+Settles: thresholds, including per-advertiser calibration
 error as a standard evaluation cut (it detects when a per-advertiser
 calibration layer would earn its place); manual vs. automated gates;
-proxy metrics while labels mature. The client's own open questions
-include how calibration should be evaluated and when a model is ready
-to launch; this doc defines exactly that, so it is also what we send
-them as our answer.
+proxy metrics while labels mature.
 
 `07_deployment_job.md` — the deployment job itself, the bridge to
-serving: triggered by model registration; task per step (evaluate,
+serving: triggered by model registration; task per step (claim,
 export, advance, read out, promote/rollback); immutable artifact +
 manifest on S3; rollout config writes with bumped revision; rollback =
 config pointing at a previous version.
