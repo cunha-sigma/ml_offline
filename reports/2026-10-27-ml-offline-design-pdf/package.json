@@ -1,0 +1,9 @@
+{
+  "name": "ml-offline-design-pdf",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "mermaid": "^11.0.0",
+    "playwright-chromium": "^1.62.1"
+  }
+}
