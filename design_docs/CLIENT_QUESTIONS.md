@@ -32,10 +32,10 @@ optimization goal, or will each goal use one fixed window?
   days?), and where does the choice live — as part of the goal value
   (for example `PIXEL_PURCHASE_7_day`) or as a separate ad set field?
 - If fixed: which window per goal, and who decides it?
-- Our first-stage contract proposal puts a **static 14-day window for
-  all advertisers** on the table, carried as `attribution_window_days`
-  in every GOAL_CPA ad-set record — confirming that value there also
-  answers this question for the first stage.
+- For the first stage, our contract proposal specifies a **static
+  14-day window for all advertisers** (`attribution_window_days` in
+  every GOAL_CPA record); confirming it there answers the first stage.
+  Selectable-versus-fixed remains for the longer term.
 
 *Why we ask: this sets the model granularity — one model per goal, or
 one per goal and window — and how many label definitions we maintain.*
@@ -50,10 +50,8 @@ one per goal and window — and how many label definitions we maintain.*
   attribution tables carry an `impression_id`; the delivery-log side
   describes `auction_id` and `request_id`. Which should we join on, and
   is it present and populated on both sides? Our first-stage contract
-  proposal asks for the auction ID from the bid request on every
-  win-log event, for decision reconstruction and training labels —
-  confirming that field there settles the delivery-log half of this
-  join.
+  proposal asks for the bid request's auction ID on every win-log
+  event; confirming that field settles the delivery-log half.
 
 *Why we ask: the filter defines which rows get training labels; the
 join is what the whole label build stands on.*
@@ -73,21 +71,22 @@ without the mapping we cannot connect a goal to its rows.*
 
 When a conversion is attributed, is it recorded anywhere whether the
 attribution was click-through or view-through? If yes, can that
-information be included in the conversion data we consume? This matters
-because the two carry very different signal strength — knowing the
+information be included in the conversion data we consume? If it isn't
+recorded, we'll treat all conversions simply as "attributed" without
+distinguishing the method.
+
+*Why we ask: the two carry very different signal strength; knowing the
 method lets us choose and inspect what the training label means,
-instead of learning from an unknown blend. If it isn't recorded, we'll
-treat all conversions simply as "attributed" without distinguishing the
-method.
+instead of learning from an unknown blend.*
 
 ## 6. Candidates per bid request — the maximum and distribution shape
 
-What are the per-request **maximum** and the distribution shape
-(median, p99, max) of candidates in a single bid request? The 2026-11-02
-traffic metrics delivered the volume figures and the per-auction
-averages (13.9 with probabilistic pacing removed, 1.3 with it
-retained); the maximum was flagged as pending from the ad-server
-vendor — this asks for that remaining piece once the vendor responds.
+What are the practical per-request **maximum** and the distribution
+shape (median, p99) of candidates in a single bid request? The
+2026-11-02 traffic metrics covered the volume figures and the
+per-auction averages (13.9 with probabilistic pacing removed, 1.3 with
+it retained); the maximum was flagged there as pending from the
+ad-server vendor and is the remaining piece.
 
 *Why we ask: serving cost and latency scale linearly with candidates
 per request; the per-request maximum sizes the worst case we must
@@ -123,7 +122,7 @@ is on us, that is new scope for the data lane.*
 
 ## 9. Update cadence of the shared data
 
-The client has proposed cadence expectations per data type — hourly for
+You have proposed cadence expectations per data type — hourly for
 delivery metrics (impressions, clicks, spend), daily for attributed
 conversions and training data. Can you confirm these as the committed
 cadences for what the bidder account will actually receive, per
@@ -131,6 +130,19 @@ dataset? And where a faster feed is technically possible
 (near-real-time delivery data, for example), is providing it an
 option?
 
+- The win-log stream specifically: is it near-real-time or batched,
+  and with what typical delay?
+
 *Why we ask: the shared data's freshness is a hard floor under
 everything we compute from it, from training recency to the online
-features.*
+features; the win-log delay additionally floors how fast our spend and
+win-rate guardrails can react during a model rollout.*
+
+## 10. Baseline conversion rates per goal
+
+What conversion rates do you observe today per goal — page views and
+purchases per impression — overall and the typical range across
+advertisers? Approximate figures from existing reporting are enough.
+
+*Why we ask: baselines anchor the absolute thresholds in our model
+evaluation gates and the observation times rollout stages need.*
