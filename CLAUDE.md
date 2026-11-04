@@ -18,7 +18,7 @@ Final Bid = λ × Max CPA × P(Goal Action | Impression)
 
 Four logical services: **Bid Ingestor/Processor**, **Discount Pacing (λ)**, **ML Prediction (Expected Value / Ad Ranking)**, **Bid Decision/Response**.
 
-Ad sets will carry two new fields (batch-02 ML report): **`bidding_strategy`** ∈ {`max_cpm`, `goal_cpa`, `lowest_cost` ("auto bid")} and **`optimization_goal`** — the action to predict, which selects the model (`impressions` needs none, `P = 1`). Initial models: **Page View and Purchase**. Today all the client's advertisers are effectively **awareness** (`bid = λ × Max CPM`, probability = 1). This project unlocks **performance** (CPA) bidding.
+Ad sets will carry two new fields (batch-02 ML report): **`bidding_strategy`** ∈ {`max_cpm`, `goal_cpa`, `lowest_cost` ("auto bid")} and **`optimization_goal`** — the action to predict, which selects the model (`impressions` needs none, `P = 1`). Our first-stage contract proposal (batch-03 `contracts/`, Sigma-authored, unconfirmed) narrows stage 1 to `MAX_CPM` | `GOAL_CPA` and proposes a static 14-day attribution window. Initial models: **Page View and Purchase**. Today all the client's advertisers are effectively **awareness** (`bid = λ × Max CPM`, probability = 1). This project unlocks **performance** (CPA) bidding.
 
 ## Our lane
 
@@ -59,7 +59,7 @@ The client runs on **AWS**: Postgres (RDS), S3, Athena, Iceberg, Glue, MWAA/Airf
 | `design_docs/` | Offline ML platform design (ETL, training, hot-feature pipelines on AWS + Databricks); design docs only, see its `CLAUDE.md` |
 | [ml_serving](https://github.com/cunha-sigma/ml_serving) (external repo) | The MVP ML-serving Go library (ONNX artifact + manifest, rollout config, hot-feature mirror, decision logs). No local copy — always link the GitHub repo |
 | [ml_serving_bench](https://github.com/cunha-sigma/ml_serving_bench) (external repo) | Frozen serving-latency benchmark (engines `leaves` + ORT, stage-placement arrangements, serving report). No local copy — always link the GitHub repo |
-| `docs/` | Client input: `batch_01/` (initial doc set) + `batch_02/` (2026-10: `client_reports/` + Olena's `testing/` docs); each batch has an `md/` conversion folder |
+| `docs/` | Client input: `batch_01/` (initial doc set) + `batch_02/` (2026-10: `client_reports/` + Olena's `testing/` docs) + `batch_03/` (2026-11: `contracts/` — Sigma/PM-authored proposal, not client fact — plus `traffic_and_workload_metrics/` and `data-samples/`); each batch has an `md/` conversion folder (batch-03's also holds xlsx→CSV and query→`.sql` exports) |
 | `scratchpad.md` | Living worklog / current status |
 
 ## Team

@@ -1,7 +1,7 @@
 # Client Custom Bidding Agent — Discovery Summary
 
 **Purpose:** Durable, single-file knowledge base for the client custom-bidding-agent project, ML-lane focused. Consolidates client-provided facts and our team's analysis so context survives across sessions and people.
-**Date:** 2026-09-22 · **Updated:** 2026-10-20 (design_docs set complete, 00–09; final whole-design audit) · **Status:** living summary
+**Date:** 2026-09-22 · **Updated:** 2026-11-04 (batch-03 ingested: traffic/workload metrics, data samples, first-stage contract proposal) · **Status:** living summary
 
 > **How to read this file.** Two top-level parts are kept strictly separate:
 > **Part 1 — Client-provided facts** (what the client docs state) and
@@ -12,7 +12,7 @@
 
 # Part 1 — Client-provided facts
 
-*Source: the client documents under `docs/batch_01/md/` (initial doc set) and `docs/batch_02/md/client_reports/` (2026-10 background reports, §1.9). These are statements from the client, not our conclusions.*
+*Source: the client documents under `docs/batch_01/md/` (initial doc set), `docs/batch_02/md/client_reports/` (2026-10 background reports, §1.9), and `docs/batch_03/` (2026-11 traffic/workload metrics + data samples, §1.10). These are statements from the client, not our conclusions.*
 
 ## 1.1 Project overview
 
@@ -131,11 +131,30 @@ All equations are per impression; a CPM bid representation multiplies by 1,000. 
 
 - Defines discount pacing **λ** (bid-price multiplier) vs. probabilistic pacing **α** (auction inclusion rate); proposes a hybrid start where the client Pacing Service computes λ (even curves first) and the ad server's Pacing-as-a-Service keeps α. Kept only for the λ semantics used in the bid formula; the pacer is not our scope.
 
+## 1.10 Batch-03 (2026-11): traffic & workload metrics + data samples
+
+*Source: `docs/batch_03/` — client responses to our traffic/workload questions (Slack, 2026-11-02; converted in `md/traffic_and_workload_metrics/`, with the raw xlsx exported to CSV + the client's SQL queries as `.sql` — query engine unstated, Athena is our inference, §1.9) and the first real data samples (`data-samples/`, with their own README). The measurement period is October 1–29, 2026 unless noted.*
+
+### Traffic & workload metrics (client-measured)
+
+- **Auction requests per second** (from the auction logs; the query scales counts ×100, implying a 1% sample — rate not stated; per-minute buckets): avg **443,869**, p50 439,907, p90 564,293, p99 692,974, **max 1,922,200**.
+- **Bid responses per second** (line items that were eligible, passed pacing, and returned a bid): avg **20,982**, p50 4,334, p90 66,241, p99 141,938, max 372,996.
+- **Candidates per auction** (Oct 5–18, method confirmed with the ad-server vendor): avg **13.9 if the ad server's probabilistic pacing were removed**, avg **1.3 with it retained**. 7.36 × 10¹² candidates before pacing elimination, 7.17 × 10¹¹ after, over 5.31 × 10¹¹ auction requests. **Maximum candidates per request not provided — awaiting the ad-server vendor.**
+- **Active line items / campaigns** (receiving ≥ 1 bid, hourly): ~**630 line items**, ~**344 campaigns** per hour on average; full hourly series in the CSV.
+- **Impression delay** (bid time → impression event, from `win_logs`): the client states **~53% within 3 minutes** (histogram: 52.76% at 180 s) and **~90% within 15 minutes** — but the client's own histogram CSV puts 15 minutes at **81.4%**, with 90% reached only at **~24 minutes** (p50 ≈ 2.3 min, p95 ≈ 38 min, p99 ≈ 78 min, computed from the raw buckets). The prose overstates; the CSV is the authority.
+- **Traffic profile**: per-15-minute estimated auctions, bids, impressions won, cost, bid rate, win rate, and winning CPM for Oct 1–29, in the CSV. Whole-period aggregates computed from it: **bid rate 4.75%**, **win rate 0.88%**, **winning CPM ~$10** (aggregate $9.95, per-interval median $9.04). Per-interval variation is wide (bid rate median 1.1%, max 34%; win rate median 4.5%, max 36%).
+- The queries behind the RPS, bids-per-second, impression-delay, and traffic-profile figures run on `vir-prod-uaadsmanager-reporting-db` (`auction_us_{east,west}`, `bid_logs_us_{east,west}`) and `ua-data-jobs-prod-reporting.win_logs` — the same tables the batch-02 ML report named for training data (§1.9). No query is provided for the active-lines/campaigns series or the candidates-per-auction computation.
+
+### Data samples (first real payloads)
+
+- **Joined firehose events** (`firehose-full-*.ndjson`, 933 records; anonymized by the client — user/device identifiers, geo, consent, URLs replaced; business data intact): each record joins the OpenRTB-extension **bid request** (app/site inventory, ad slot/video details, deals, device/user context), the **`adcandidates` array** (line-item/campaign/account IDs, `bidding.bid_price_micros`, pacing flags, targeted segments), the delivered **impression** (advertiser/line-item/creative IDs, `bid_price_micros_usd`, `win_price_micros_usd`, bid-shading info, timing), and usually an **`activity` array of video events** (START, Q1, MID, Q3 quartiles) — i.e. real **video** traffic, not banner fixtures. In these samples: 1–15 candidates per request, mean 4.9, median 2.
+- **Delivery-control export** (`sigma_sample_file.ndjson`, 130 records from the client's Postgres): the organization → ad_account → campaign → adset → ad hierarchy with per-entity status, budgets, flight dates, and the **DSP-ID bridge** (upstream-DSP advertiser/campaign/line-item IDs alongside the client's `ua_*_id` UUIDs) — matched to the firehose impressions. **`bidding_strategy` and `pacing` are null placeholders in this export** (whether the columns exist-but-empty in the data model or don't exist yet is not established by the README).
+
 ---
 
 # Part 2 — Our analysis & working decisions
 
-*Source: `reports/discovery_report/ML_Lane_Discovery_Report.md` (Rodrigo Cunha, 2026-09-22, delivered and frozen), the `adr/` set, and the team's testing docs (`docs/batch_02/md/testing/`, §2.7). These are our team's reasoning and leans — not client-confirmed. Open questions are in `design_docs/OPEN_QUESTIONS.md`.*
+*Source: `reports/discovery_report/ML_Lane_Discovery_Report.md` (Rodrigo Cunha, 2026-09-22, delivered and frozen), the `adr/` set, the team's testing docs (`docs/batch_02/md/testing/`, §2.7), and our first-stage contract proposal (`docs/batch_03/md/contracts/`, §2.8). These are our team's reasoning and leans — not client-confirmed. Open questions are in `design_docs/OPEN_QUESTIONS.md`.*
 
 ## 2.1 What we own
 
@@ -181,9 +200,9 @@ remains a frozen snapshot with its own numbering. Refer to questions
 **by topic, never by number**. The historical list below is kept only
 for the settled-item trace:
 
-- **Target & labels:** (1) label volumes per goal and window — both goals (Page View, Purchase) ship per batch-02; volumes decide each goal's windows, not which goal goes first (§1.9); (2) which windows will be offered per goal (possibly advertiser-selectable, §1.9), confirming the 1-day variant the batch-02 report names, and whether the attribution method (click- vs. view-through) can be exposed at all; (3) real attribution coverage / handling of unmatched/privacy-limited conversions? (4) existing CVR baselines to calibrate against?
-- **Data access & features:** (5) sanitized real bid-request samples for premium video/TV (current samples are banner)? (6) mechanism + cadence for the bidder account to consume client data — partially answered: batch-02 names the source tables (§1.9); the cross-account mechanism stays open, now owned by the DE lane; (7) achievable feature freshness per category — partially answered: the cadence tiers are published (§1.5); still open whether a fresher-than-hourly boundary feed is achievable; (8) Max CPA at bid time — **answered by batch-02**: the ad set's existing `max_bid`, read from ad set config and reinterpreted per `bidding_strategy` (CPA under goal_cpa, §1.9).
-- **Serving & latency:** (9) expected/peak throughput and candidates-per-request distribution — team working numbers exist (1M req/s, 10 candidates/request, §2.7) pending client confirmation; (10) latency budget for the ML step within the 10ms envelope — settled: a firm ~3ms p99 (our target, CLAUDE.md "Our lane"); (11) Go monolith or multi-service — internal (SW-team benchmark), not a client ask; kept for completeness; (12) GPU available, or CPU-only for MVP?
+- **Target & labels:** (1) label volumes per goal and window — both goals (Page View, Purchase) ship per batch-02; volumes decide each goal's windows, not which goal goes first (§1.9); (2) which windows will be offered per goal (possibly advertiser-selectable, §1.9), confirming the 1-day variant the batch-02 report names, and whether the attribution method (click- vs. view-through) can be exposed at all — the batch-03 contract proposes a static 14-day window for all advertisers in the first stage, awaiting client confirmation (§2.8); (3) real attribution coverage / handling of unmatched/privacy-limited conversions? (4) existing CVR baselines to calibrate against?
+- **Data access & features:** (5) sanitized real bid-request samples for premium video/TV — **answered by batch-03**: anonymized joined firehose samples with real video traffic (§1.10); (6) mechanism + cadence for the bidder account to consume client data — partially answered: batch-02 names the source tables (§1.9); the cross-account mechanism stays open, now owned by the DE lane; (7) achievable feature freshness per category — partially answered: the cadence tiers are published (§1.5); still open whether a fresher-than-hourly boundary feed is achievable; (8) Max CPA at bid time — **answered by batch-02**: the ad set's existing `max_bid`, read from ad set config and reinterpreted per `bidding_strategy` (CPA under goal_cpa, §1.9); the batch-03 contract carries it as the ad-set `bid` field, net of fees (§2.8).
+- **Serving & latency:** (9) expected/peak throughput and candidates-per-request distribution — **largely answered by batch-03** (§1.10): client-measured auction RPS (avg ~444k, p99 ~693k, max ~1.92M) and candidates-per-auction averages (13.9 without the ad server's probabilistic pacing, 1.3 with it); the maximum candidates per request is still pending from the ad-server vendor; (10) latency budget for the ML step within the 10ms envelope — settled: a firm ~3ms p99 (our target, CLAUDE.md "Our lane"); (11) Go monolith or multi-service — internal (SW-team benchmark), not a client ask; kept for completeness; (12) GPU available, or CPU-only for MVP?
 - **ML interface:** (13) probability vs. expected value — the client leaves it explicitly open (§1.9); our proposal is probability only (ADR-0001, contradiction #1), to present for their confirmation.
 - **Tooling/infra/compliance:** (14)(15) training infra and registry — **settled: Databricks** (workloads, MLflow tracking, Unity Catalog registry; direct client knowledge); (16) reuse the client's MWAA or stand up our own — still open; (17) monitoring standard — ours to decide (Datadog lean), not a client blocker.
 - **Lifecycle:** (18) retraining cadence and pre-serve validation — ours to decide after EDA, not a client blocker; (19) the goal-CPA evaluation window and fee treatment — the client's ML report marks both as remaining to be defined; we need them to compute the cost-per-action readouts (design_docs 06).
@@ -191,8 +210,8 @@ for the settled-item trace:
 ## 2.5 Dependencies & risks
 
 - **Cross-account data access** — critical path; nothing trains/serves without it. Owned by the DE lane; the ML lane consumes the five curated datasets as a given.
-- **Attribution definition** (windows per goal, volumes, method) — defines the prediction target; blocks the window choice per goal (label build itself is parametrized).
-- **Real traffic samples** — needed to validate feature availability/latency on real video payloads (current fixtures are banner).
+- **Attribution definition** (windows per goal, volumes, method) — defines the prediction target; blocks the window choice per goal (label build itself is parametrized). The batch-03 contract proposes a static 14-day window for the first stage (§2.8) — client confirmation would settle the window; the method is still open.
+- **Real traffic samples** — delivered in batch-03 (anonymized joined firehose with real video payloads, §1.10); feature-availability EDA on them is now unblocked.
 - **Compliance** (AI-use annex) — the annex constrains AI-system use for the work; tooling itself is settled (Databricks). Confirm annex scope against the signed contract.
 - **Agent topology** (monolith vs. multi-service) — owned by the SW-team benchmark; the ML embedding choice is settled (pure library) and no longer depends on it.
 
@@ -215,6 +234,18 @@ Team-authored testing docs under `docs/batch_02/md/testing/` — ours, not clien
 - **Test strategy (draft):** TypeScript monorepo (pnpm) with Playwright (component/integration, E2E, UI) + k6 (performance), Allure reporting, Prometheus + Grafana for performance runs. CI tiers: per-PR smoke, nightly regression, weekly performance runs on a dedicated production-representative environment. E2E uses a deterministic ad-server emulator; integration testing against the real ad server is owned by the ad-server vendor's integration team. Rollout validation (shadow, canary, blue/green, progressive) is shared TA/ML/SRE.
 - **Performance targets captured there (team-stated, to confirm with client):** 1M bid requests/sec throughput; E2E p99 ≤ 10 ms; **ML prediction p99 ≤ 3 ms**; 10 candidates/request as the initial assumption. Method: 1 warm-up + 10 measured runs, p99 evaluated per run, never averaged across runs.
 - **AI test harness (vision + ROI):** a Claude Code-based agentic layer on top of the test-automation solution (requirements analysis → test design → implementation → execution/triage), build phases H0–H8 with human approval gates throughout. ROI model v2.0 (draft): reference case breaks even ~8.4 months, ROI 100% ~16 months, sensitive mainly to triage volume. Effort estimates in `testing_estimate.md`.
+
+## 2.8 First-stage scope & data-contract proposal (Sigma, 2026-11)
+
+*Source: `docs/batch_03/md/contracts/Bidder agent - contract.md` — a **Sigma-authored proposal** (prepared by the PM lane) sent to the client for confirmation, not a client statement; nothing in it is confirmed. (A "V3" companion docx in the same batch is an empty document.) The ML-relevant points:*
+
+- **First-stage principle:** the agent works at one level, the client's ad set (an ad-server line item), with the smallest input set that lets it price and pace. The ad server applies targeting, budgets, flight dates; the agent prices every candidate its bidder sends, checking only `status = ACTIVE` and currency match.
+- **Ad-set settings feed (proposed):** one complete newline-delimited-JSON record per ad set at a fixed location (S3/HTTP), polled on an interval (~5 min suggested), full replace each fetch; an ad set missing from the list stops being bid on. Fifteen fields, including `beeswax_line_item_id` (join key to the auction request), `ua_adset_id` (join key to conversion data), effective `status` (hierarchy pre-resolved by the client), `bid` (already net of the client's fees), `currency`, `daily_budget`, `pacing`, `timezone`, flight dates, `day_part`.
+- **`bidding_strategy` narrowed to two values for the first stage:** `MAX_CPM` | `GOAL_CPA` — `lowest_cost` ("auto bid", §1.9) is not in the first-stage contract. `optimization_goal` ∈ {`IMPRESSIONS`, `PIXEL_PAGE_VIEW`, `PIXEL_PURCHASE`} (IMPRESSIONS only with MAX_CPM) — exactly our two initial models plus the non-ML path.
+- **Attribution window: one static value proposed — 14 days for all advertisers** in the first version, carried as `attribution_window_days` in every GOAL_CPA record; the client is asked to confirm. Per-ad-set windows (7/14) are an explicit later-stage extension ("training data and predictions that match that window"). **Directly bears on ADR-0004** — if the client confirms, the first-stage label window is settled at 14 days with the field already plumbed for later per-ad-set variation.
+- **Win-log stream requirements (label-relevant):** per won impression — ad-server line item ID, impression time (UTC; bid time if available, to measure reporting delays), all-in cost, USD→line-currency rate, a unique event ID (dedup), and the **auction ID the ad server sent in the bid request — explicitly "needed to reconstruct decisions and to build training labels."** Our decision-log ↔ win-log ↔ attribution join path, stated in the contract.
+- **Max-bid cap question raised:** for GOAL_CPA the only bound on the price is the target CPA itself, which as a per-impression price allows absurd CPMs if the probability is overestimated (a $25 target → $25,000 CPM at P=1). The contract asks whether the client sets a max bid on CPA lines in the ad server; if not, the agent caps on its own. A direct guardrail on ML output misbehavior.
+- **Agent-side responsibilities confirmed:** predicting conversion probability from a model trained on the client's impression + conversion data, and recording every decision so a bid can be explained and reproduced. Attribution and fee deduction stay with the client; the agent never handles fees.
 
 ---
 
@@ -245,7 +276,7 @@ Team-authored testing docs under `docs/batch_02/md/testing/` — ours, not clien
 | ML serving lib | [github.com/cunha-sigma/ml_serving](https://github.com/cunha-sigma/ml_serving) | The MVP Go serving library (ONNX artifact + manifest, rollout config, hot-feature mirror, decision logs). Externalized repo; no local copy. |
 | Serving benchmark | [github.com/cunha-sigma/ml_serving_bench](https://github.com/cunha-sigma/ml_serving_bench) | Frozen serving-latency benchmark (engines `leaves` + ONNX Runtime, stage-placement arrangements, serving report). Externalized repo; no local copy. |
 
-*Client source docs live under `docs/batch_01/` (initial set: `Documents/`, AI annex, tech-debt process; converted Markdown in `batch_01/md/`) and `docs/batch_02/` (2026-10: `client_reports/` + Olena's `testing/`; converted Markdown in `batch_02/md/`). The arch-diagram image is `batch_01/md/Documents/_media/media/image1.png` (not machine-readable here).*
+*Client source docs live under `docs/batch_01/` (initial set: `Documents/`, AI annex, tech-debt process; converted Markdown in `batch_01/md/`), `docs/batch_02/` (2026-10: `client_reports/` + Olena's `testing/`; converted Markdown in `batch_02/md/`), and `docs/batch_03/` (2026-11: `contracts/` + `traffic_and_workload_metrics/` + `data-samples/`; conversions in `batch_03/md/` — docx → Markdown, xlsx data sheets → CSV, embedded Athena queries → `.sql`). The arch-diagram image is `batch_01/md/Documents/_media/media/image1.png` (not machine-readable here).*
 
 ---
 
@@ -253,7 +284,7 @@ Team-authored testing docs under `docs/batch_02/md/testing/` — ours, not clien
 
 1. **ML output = probability (our proposal — see ADR-0001, amended):** the client docs' formulas have the Bid Decision service apply `× Max CPA`, but the client's own prose names the service in EV terms (scope-doc heading "ML Prediction Service (Expected Value formulation for Ad Ranking)"; the batch-02 report's "providing the expected-value input"), and batch-02 leaves probability-vs-EV explicitly open ("must at least provide the goal p(Action)"). ADR-0001 (probability only) is our answer to that open question, to present to the client.
 2. **Serving-topology tension:** the client's infra doc prescribes a **dedicated EKS (Kubernetes) cluster** for the bidder, while our ML lean is an **embedded/co-located Go** serving path (ONNX on CPU) to minimize hops, with Triton/GPU deferred. These are reconcilable (EKS can host a Go service): the ML side is settled as a pure Go library embedded in the agent (ml_serving; no server mode), validated by our serving benchmark ([ml_serving_bench](https://github.com/cunha-sigma/ml_serving_bench)) and recommended as the all-in-ONNX artifact embedded in Go (ADR-0006). What remains open is the agent's own runtime shape (monolith vs. multi-service — the SW-team benchmark question).
-3. **Banner samples vs. premium-video product:** all provided fixtures/payloads are **banner** examples (from the DSP tool), explicitly not client production traffic; the product is **premium TV/video** (the `adset_type` enum currently includes video). We cannot validate feature availability or latency on representative payloads yet (the real-traffic-samples question, `design_docs/OPEN_QUESTIONS.md`).
+3. **Banner samples vs. premium-video product — resolved by batch-03:** the original fixtures/payloads were **banner** examples (from the DSP tool), explicitly not client production traffic, while the product is **premium TV/video**. Batch-03 delivered anonymized joined firehose samples of real video traffic (§1.10), unblocking feature-availability EDA; the SW-team benchmark's video payload profiles can also now be built from them. Remaining gap: user/device identifiers are anonymized, so user-level feature signal can't be assessed from these samples.
 4. **AI-use annex (Sigma-issued, now in the doc set):** present in `docs/batch_01/md/` (filename still carries the unredacted parent-company name — pending rename). It restricts using AI systems not provided by the client's parent company for the work without written approval; it does **not** govern ordinary tooling choices (e.g., MLflow). Confirm its scope against the signed contract.
 5. **Goal-priority drift across client docs:** the batch-01 scope doc framed **Purchase as likely top priority with Page View as the likely fallback**; the batch-02 ML report (§1.9) prioritizes **Page View and Purchase together** as the initial models. Both goals ship; label volumes decide each goal's windows, not which goal goes first.
 6. **Empty tech-debt register:** process is defined but the register is a blank template — no logged items yet.

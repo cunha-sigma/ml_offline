@@ -9,17 +9,16 @@ phrased to send.
 
 | Question | What it unblocks | Sources |
 |---|---|---|
-| Which attribution windows will be offered per goal (advertiser-selectable?); confirm the 1-day table; the goal → `event_name` mapping | model granularity per goal; the label build's goal filter | `PLAN.md` OQ1, `00_overview.md` OQ1, `03_labels.md` OQ1 |
+| Which attribution windows will be offered per goal (advertiser-selectable?); confirm the 1-day table; the goal → `event_name` mapping. Our first-stage contract proposal (2026-11, unconfirmed) puts a **static 14-day window for all advertisers** on the table, carried as `attribution_window_days` per ad-set record — client confirmation would settle the stage-1 window | model granularity per goal; the label build's goal filter | `PLAN.md` OQ1, `00_overview.md` OQ1, `03_labels.md` OQ1 |
 | Can the attribution method (click- vs. view-through) be exposed per conversion? | label semantics and inspectability | `PLAN.md` OQ1, `03_labels.md` OQ2 |
-| How to identify served impressions (filter or wins-only), the impression↔conversion join key, and which layer backs the attribution feed | the label universe and the join the label build stands on | `PLAN.md` OQ5, `03_labels.md` OQ3 |
+| How to identify served impressions (filter or wins-only), the impression↔conversion join key, and which layer backs the attribution feed. Our first-stage contract proposal (2026-11, unconfirmed) requires the win-log stream to carry the auction ID from the bid request, explicitly for decision reconstruction and training labels — a proposed join key pending client confirmation | the label universe and the join the label build stands on | `PLAN.md` OQ5, `03_labels.md` OQ3 |
 | The cross-account transfer mechanism (carried by the DE lane) | the read path and the hot-feature freshness floor | `PLAN.md` OQ3, `01_data_access.md` OQ1 |
 | Do the five curated datasets ship as named; exact schemas against our stated requirements | raw/cleaned column lists; the identity-triplet check | `01_data_access.md` OQ2, `02_datasets.md` OQ1 |
 | Privacy/PII review: field-by-field drop/hash/retain, hashing sufficiency, `gdpr_consent_string`, dev-data use | cleaned-layer rules; the dev environment's data | `PLAN.md` OQ4, `02_datasets.md` OQ3, `08_orchestration_repos.md` OQ3 |
 | Committed cadence per shared dataset; is a fresher-than-hourly delivery feed an option? | training recency and the online-feature freshness floor | `01_data_access.md` OQ3, `04_features.md` OQ1 |
 | The cost-per-action evaluation window and fee treatment (their own stated TBD) | aligned cost-per-action readouts | `06_validation_promotion.md` OQ2 |
 | Does the ad server give the agent a real-time win-notice/price signal, or only the hourly curated feed | the spend and win-rate guardrails' actual latency floor | `06_validation_promotion.md` OQ5 |
-| Candidates-per-request distribution (median, average, p99, max); volume figures if available | serving capacity sizing; A/B arm-size math | `CLIENT_QUESTIONS.md`; standing discovery ask |
-| Sanitized premium-video bid-request samples (current fixtures are banner) | feature availability at bid time on real traffic | standing discovery ask |
+| Candidates-per-request **maximum and distribution shape** (the client says the max is pending from the ad-server vendor). Delivered 2026-11-02: averages — 13.9 per auction with the ad server's probabilistic pacing removed, 1.3 with it retained — plus full volume figures (auction RPS avg ~444k, p99 ~693k, max ~1.92M; bids avg ~21k/s) | serving capacity sizing; A/B arm-size math | `CLIENT_QUESTIONS.md`; standing discovery ask |
 | Observed baseline conversion rates per goal | training's absolute gate thresholds and rollout bake times | `06_validation_promotion.md` OQ1 |
 | MWAA: reuse the client's instance or run our own | where DAG code deploys; dev's instance | `08_orchestration_repos.md` OQ1 |
 | Bidder response dataset: required fields, cadence, consumers | the export job's shape (assembly already designed) | `01_data_access.md` OQ4, `09_monitoring.md` OQ4 |
@@ -55,24 +54,35 @@ phrased to send.
 
 ## Serving-side changes to schedule ([ml_serving](https://github.com/cunha-sigma/ml_serving))
 
-The work list the design requires from the serving lib; the designs
-here already assume these shapes.
+The work list the design still requires from the serving lib; the
+designs here already assume these shapes.
 
 | Change | For |
 |---|---|
-| Decision rows carry request id, model inputs, routing salt, routing-unit value, and a per-candidate scored-versus-default flag (the row in `00_overview.md`, touchpoint 4) | label joins, replay, sample-ratio checks, per-candidate defaulted rates |
-| The scoring response carries per-candidate metadata: goal (and window) answered, model identity, scored-versus-default flag | the bid-decision step and decision reconstruction |
-| Rollout-config conventions for the fleet-load, shadow, and canary-ramp states (A/B nested inside the ramp when a policy enables it), plus the `queued` field | the deployment job's advance writes |
-| Per-arm/version dimensions on the lib's metrics; shadow sampling and drop counters | per-arm health reads; the shadow readout |
-| S3 sources for the rollout config and artifacts (or an S3-to-file sync) | the deployment job writes S3; the lib must read it |
+| The shadow scorer, with attempted-versus-dropped counters | the shadow readout's sampling-integrity check |
+| An S3 source for the rollout config (or an S3-to-file sync); the artifact S3 source exists | the deployment job writes S3; the lib must read it |
+| Per-candidate goal (and window) in the scoring response — or close as satisfied by slot identity, since each slot serves one goal | the bid-decision step and decision reconstruction |
 | Staged config propagation and alarm-rollback ownership | safe config rollout at fleet scale |
-| The slot-naming convention documented lib-side (slots named by goal, later goal and window) | predictable config paths and model names |
-| Outbound: `06_validation_promotion.md` answers the serving repo's open questions on approval placement and label-delay proxies — send back | closing their open list |
+
+Shipped by the lib (verified 2026-11-04): decision rows carry request
+id, model inputs, routing salt, routing-unit value, and per-candidate
+defaulted fields; the scoring response is per-candidate (probability,
+arm, model version, defaulted fields); the rollout config has
+fleet-load/shadow/canary modes with A/B nested in the ramp and a
+`queued` slot; metrics are dimensioned by model/arm/version; challenger
+routing is wired (champion fallback on missing unit or unloaded
+challenger); the artifact source reads S3; slot naming is documented
+lib-side; and the serving repo closed its approval-placement and
+label-delay questions with the `06_validation_promotion.md` answers.
 
 `PLAN.md` OQ6 is a rollup of `08_orchestration_repos.md`'s list; the
-08-sourced rows above cover it.
+rows above cover what survives of it.
 
 Excluded as settled (resolved during the design audits): Max CPA
 availability at bid time, probability-versus-expected-value interface,
 environments and the deployment job's per-environment instantiation,
-approval-gate placement.
+approval-gate placement. Answered by the client (2026-11-02):
+premium-video bid-request samples (anonymized joined firehose events
+delivered — real video traffic with quartile activity events), and the
+volume/average half of the candidates-per-request ask (figures in the
+row above).

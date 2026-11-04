@@ -26,10 +26,6 @@ Everything a verdict reads comes from three places:
   feed, hourly at best (`01_data_access.md`'s cadence tiers), not
   continuous.
 
-The challenger, shadow, and routing capabilities this doc reads from
-are the serving repo's target design; its v0 ships champion-only. The
-doc designs against the target, consistent with the rest of the set.
-
 ## Rollout policy
 
 The decision logic is parametrized per model by a rollout policy — a
@@ -97,6 +93,8 @@ flowchart LR
   SH -. abort .-> RB
   CA -. abort .-> RB
   AB -. abort .-> RB
+  RAMP -. abort .-> RB
+  PR -. abort .-> RB
 ```
 
 - Fleet load (0% traffic) — the artifact loads fleet-wide without

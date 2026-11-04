@@ -15,7 +15,7 @@ Out: `docs/` (client sources — they are the yardstick, not audit targets), `re
 ## Yardsticks
 
 - Decisions: `adr/` (0000–0006 + any later; `adr/README.md` is the index). Amended ADRs carry an "Amended" date in the status line.
-- Client facts: `docs/batch_01/md/` and `docs/batch_02/md/client_reports/` (converted Markdown). `docs/batch_02/md/testing/` is team-authored (QA), never client fact.
+- Client facts: `docs/batch_01/md/`, `docs/batch_02/md/client_reports/`, and `docs/batch_03/md/traffic_and_workload_metrics/` (converted Markdown + CSV/`.sql` exports), plus `docs/batch_03/data-samples/` (client-original, incl. its README). `docs/batch_02/md/testing/` is team-authored (QA) and `docs/batch_03/md/contracts/` is team-authored (Sigma/PM first-stage contract proposal) — never client fact.
 - Serving contract: the local ml_serving checkout (real path recorded in session memory; the repo is github.com/cunha-sigma/ml_serving) — docs under its `docs/`, plus the Go types when docs are ambiguous. Its `docs/ML_SERVING_SOA.md` is an untouched external reference, not adopted design — never cite it as a serving commitment.
 
 ## Process

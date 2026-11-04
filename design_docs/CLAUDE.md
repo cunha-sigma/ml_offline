@@ -36,8 +36,23 @@ parity gate) live in the serving repo, not here.
   proposal: probability only). The attribution window may
   become advertiser-facing configuration. Sparse-signal and new
   advertisers must be supported without per-advertiser models.
+- **Batch-03 traffic/workload metrics (client-measured, 2026-11-02,
+  Oct 1–29):** auction RPS avg ~444k / p99 ~693k / max ~1.92M; bid
+  responses avg ~21k/s; candidates per auction avg **13.9** with the
+  ad server's probabilistic pacing removed, **1.3** with it retained
+  (per-request maximum pending from the ad-server vendor); ~630 active
+  line items per hour; impression delay 53% ≤ 3 min — the client's
+  histogram puts 15 min at 81%, 90% at ~24 min. Real video bid-request
+  samples (anonymized joined firehose) are delivered.
 
 ## Directed working assumptions (not client-confirmed)
+
+- **First-stage contract proposal (ours — Sigma/PM-authored, 2026-11,
+  unconfirmed):** stage 1 narrows `bidding_strategy` to `MAX_CPM` /
+  `GOAL_CPA`; a static **14-day attribution window** for all
+  advertisers, carried as `attribution_window_days` per ad-set record;
+  the win-log stream carries the bid request's auction ID for decision
+  reconstruction and training labels. All pending client confirmation.
 
 - Our own **Airflow (MWAA)** instance for orchestration; whether we
   reuse the client's or stand up our own is an open client question.

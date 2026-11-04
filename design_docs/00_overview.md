@@ -28,7 +28,7 @@ for storage, tracking, and registry are our directed picks
 orchestration is likewise directed. Input data is reachable from our
 account; who curates it — the client directly, or our Data Engineer
 curating from the client's internal tables — is the Data Engineering
-lane's scope, unresolved (`adr/0005`), and immaterial to this
+lane's scope, unresolved, and immaterial to this
 platform's design. The transfer mechanism is open (`01_data_access.md`).
 
 ## System map
@@ -130,7 +130,11 @@ The ad set's `optimization_goal` decides whether a model is consulted
 and which one. The goal values are the client's proposed enum — both
 `optimization_goal` and `bidding_strategy` are proposed fields that do
 not yet exist in the ad set data model. Slot names are ours
-(lowercase); goal values are the client's spelling:
+(lowercase); goal values are the client's 2026-10 spelling (our
+first-stage contract proposal spells them uppercase — `IMPRESSIONS`,
+`PIXEL_PAGE_VIEW`, `PIXEL_PURCHASE` — and narrows `bidding_strategy`
+to `MAX_CPM`/`GOAL_CPA` for the first stage; the enum below is the
+full-design set):
 
 | `optimization_goal` | Bidder behavior | ML model (slot) | Labels from | Status |
 |---|---|---|---|---|
@@ -259,10 +263,10 @@ rewritten.
 Path: `<model_name>/rollout_config.json`, sibling to that model's
 `v<version>/` artifact folders. One mutable JSON per model slot: `model_name`, monotonic `revision`,
 `updated_at` and `updated_by` for audit, `champion` (`version`, `uri`,
-`checksums` for both files), later `challenger` and `routing`, and
-later still `queued` (serving-side addition, not yet in the lib's
-schema; holds at most one version waiting on a busy slot — a newer
-registration overwrites it, not a FIFO backlog). Slots
+`checksums` for both files), `challenger` and `routing`, and `queued`
+(holds at most one version waiting on a busy slot — a newer
+registration overwrites it, not a FIFO backlog; the lib carries it
+through unvalidated, it is deployment-job state). Slots
 are named per goal, later per goal and window; the bidding agent groups
 each request's candidates by goal and calls the lib per slot, so a new
 goal is a new slot and config file, not an interface change. The lib
@@ -290,13 +294,12 @@ and the agent. The exact service choice is deferred.
 
 ### 4. Decision logs
 
-One row per scored candidate. What the lib's `DecisionRecord` carries
-today: model name, version, arm, config revision, candidate id,
-probability, timestamp. What we also need and don't have yet (tracked
-in `OPEN_QUESTIONS.md`'s serving-side changes list): request id, the
-model inputs, the routing salt, the routing-unit value, and a
-per-candidate scored-versus-default flag. Rows join impressions and
-labels by `(request_id, candidate_id)` once request id lands. Offline obligations: ingest
+One row per scored candidate. The lib's `DecisionRecord` carries:
+model name, version, arm, config revision, request id, candidate id,
+probability, the model inputs (numeric and text), the routing salt,
+the routing-unit value, the per-candidate defaulted fields, and the
+timestamp. Rows join impressions and labels by
+`(request_id, candidate_id)`. Offline obligations: ingest
 the rows into the dataset layers and build the per-arm readout tables
 the deployment job's readout pass judges. Decision logs also feed
 monitoring, and are the raw material for the bidder

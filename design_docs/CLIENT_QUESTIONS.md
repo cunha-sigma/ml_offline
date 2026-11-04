@@ -1,6 +1,6 @@
 # Client questions — ML lane
 
-Top-priority questions for the client, 2026-10-20. Each is
+Top-priority questions for the client, updated 2026-11-04. Each is
 self-contained and answerable without referring back to any document.
 
 ## 1. Data sources for model building
@@ -32,6 +32,10 @@ optimization goal, or will each goal use one fixed window?
   days?), and where does the choice live — as part of the goal value
   (for example `PIXEL_PURCHASE_7_day`) or as a separate ad set field?
 - If fixed: which window per goal, and who decides it?
+- Our first-stage contract proposal puts a **static 14-day window for
+  all advertisers** on the table, carried as `attribution_window_days`
+  in every GOAL_CPA ad-set record — confirming that value there also
+  answers this question for the first stage.
 
 *Why we ask: this sets the model granularity — one model per goal, or
 one per goal and window — and how many label definitions we maintain.*
@@ -45,7 +49,11 @@ one per goal and window — and how many label definitions we maintain.*
 - Which key links an impression row to its attributed conversions? The
   attribution tables carry an `impression_id`; the delivery-log side
   describes `auction_id` and `request_id`. Which should we join on, and
-  is it present and populated on both sides?
+  is it present and populated on both sides? Our first-stage contract
+  proposal asks for the auction ID from the bid request on every
+  win-log event, for decision reconstruction and training labels —
+  confirming that field there settles the delivery-log half of this
+  join.
 
 *Why we ask: the filter defines which rows get training labels; the
 join is what the whole label build stands on.*
@@ -72,16 +80,18 @@ instead of learning from an unknown blend. If it isn't recorded, we'll
 treat all conversions simply as "attributed" without distinguishing the
 method.
 
-## 6. Candidates per bid request
+## 6. Candidates per bid request — the maximum and distribution shape
 
-How many candidate ad sets does a bid request carry? We need the
-distribution, not just the average — median, average, p99, and the
-practical maximum. If volume figures are also available (expected and
-peak requests per second reaching the bidder), those help too, but the
-candidates-per-request distribution is the critical piece.
+What are the per-request **maximum** and the distribution shape
+(median, p99, max) of candidates in a single bid request? The 2026-11-02
+traffic metrics delivered the volume figures and the per-auction
+averages (13.9 with probabilistic pacing removed, 1.3 with it
+retained); the maximum was flagged as pending from the ad-server
+vendor — this asks for that remaining piece once the vendor responds.
 
 *Why we ask: serving cost and latency scale linearly with candidates
-per request; it is the single multiplier behind compute sizing.*
+per request; the per-request maximum sizes the worst case we must
+answer within the latency budget.*
 
 ## 7. Privacy constraints on the data we'll handle
 
