@@ -1,0 +1,11 @@
+services:
+  jupyter:
+    build: .
+    container_name: ml_offline_eda
+    ports:
+      - "8888:8888"
+    volumes:
+      - ..:/work
+    working_dir: /work/eda/notebooks
+    environment:
+      PYTHONPATH: /work/eda/src
