@@ -1,8 +1,8 @@
 # 06 — Validation and promotion
 
-The decision logic of the deployment job. One job, two docs:
-`07_deployment_job.md` owns the mechanics (tasks, triggers, writes);
-this doc owns what the tasks decide on — the rollout policy, the
+The decision logic of the deployment jobs. One component, two docs:
+`07_deployment_job.md` owns the mechanics (jobs, triggers, writes);
+this doc owns what the readout decides on — the rollout policy, the
 per-state readout verdicts, the guardrails, and where humans approve.
 
 ## Decision inputs
@@ -14,9 +14,9 @@ Everything a verdict reads comes from three places:
   ever registers. A version that fails never registers, so the job can
   assume quality is already settled.
 - the per-arm readout tables (`09_monitoring.md` builds them): decision
-  rows joined with matured labels, aggregated per model, version, arm,
-  and revision. This is also where an enabled A/B's champion-versus-
-  challenger comparison is read from.
+  rows joined with matured labels, aggregated per model, version, and
+  arm, with the config revision as a sub-key. This is also where an
+  enabled A/B's champion-versus-challenger comparison is read from.
 - guardrail signals: spend, win rate, delivery, and the serving-side
   health metrics (latency, errors, defaulted-feature rates). Latency,
   errors, and defaulted-feature rate are agent-internal, continuous.
@@ -146,8 +146,8 @@ experiment's A/B is in flight, promotion is frozen for that slot —
 champion has to stay fixed for the comparison to mean anything.
 Scheduled and alert-triggered retrains keep happening underneath and
 queue, the latest superseding whoever's waiting once the freeze lifts.
-Mechanics (the `queued` field, registration-time slot check, re-trigger
-on resolution): `07_deployment_job.md`.
+Mechanics (the `queued` field, registration-time entry, queue
+consumption by the readout pass): `07_deployment_job.md`.
 
 ## Guardrails and automated abort
 
@@ -163,7 +163,7 @@ to trigger an abort.
 | Win-rate collapse | the underlying data arrives (open question 5) |
 | Calibration blowout on early labels (realized conversion rate off the prediction by more than a configured multiple) | labels mature |
 
-Any breach aborts: the promote task's rollback branch writes a config
+Any breach aborts: the readout pass's abort path writes a config
 pointing at the previous version (`07_deployment_job.md`). Abort is
 cheap and reversible — a rolled-back version can re-enter the loop
 after a fix — so guardrails are tuned to fire early.
@@ -180,7 +180,12 @@ human independent of any breach:
 
 Gate 2 (canary → promote) is fixed and mandatory for every policy —
 before the version becomes champion. This is the one invariant that
-never turns off: no version reaches the champion slot unattended.
+never turns off: no version reaches the champion slot unattended. One
+bootstrap exception: a new slot's first champion is written without
+the approval tag, because nothing serves until the serving side
+launches the goal — that launch, deliberate by nature, is the gate
+(`07_deployment_job.md`, A slot's first version). From the second
+version on, gate 2 applies unchanged.
 
 Gate 1 (shadow → canary, before the first live bid) is a policy
 parameter, off by default (Retraining modes). When on, it holds the
@@ -205,9 +210,9 @@ in the rollout policy decides how promotion handles that:
   data models, so confirming it is part of the windows question — or
   else the shortest that exists) plus the guardrails, and promotion
   proceeds on that fast evidence.
-  The full-window readout does not stop at promotion: the promote task
-  stamps a `trailing_until` tag on the model version, and the
-  deployment job's own scheduled passes keep judging it against the
+  The full-window readout does not stop at promotion: promotion stamps
+  a `trailing_until` tag on the model version, and the `deploy-readout`
+  job's scheduled passes keep judging it against the
   full window's maturing labels until the tag expires — rollback armed
   if the matured picture contradicts the fast one
   (`07_deployment_job.md`).
@@ -232,6 +237,11 @@ A model version is ready to serve when, in order:
    including A/B when the policy runs one
 5. a human approved the final promotion — and the first live exposure
    too, when gate 1 is on
+
+The ordered list does not apply to a slot's first version: it carries
+only its training-run gate (step 1), becomes champion at registration,
+and the serving-side goal launch is the gate before anything serves
+(`07_deployment_job.md`, A slot's first version).
 
 Calibration is evaluated on won impressions: the readouts join served
 impressions to their outcomes, the same population cost per action is

@@ -271,7 +271,7 @@ Team-authored testing docs under `docs/batch_02/md/testing/` — ours, not clien
 | ML Lane Discovery Report | `reports/discovery_report/ML_Lane_Discovery_Report.md` | Discovery-level ML-lane plan, delivered 2026-09-22 and frozen: design areas A–H with leans, assumptions, client questions, risks. |
 | This summary | `DISCOVERY_SUMMARY.md` | Consolidated client facts + our analysis (this file). |
 | ADR set | `adr/` | ADR-0000 meta + 0001–0006 (status in §2.6); `README.md` (index), `template.md`. |
-| Offline platform design | `design_docs/` | Design docs for the offline ML platform — the set is complete (00–09): overview, data access, datasets, labels, features, training, validation/promotion, deployment job, orchestration/repos, monitoring. |
+| Offline platform design | `design_docs/` | Design docs for the offline ML platform — the set is complete (00–09): overview, data access, datasets, labels, features, training, validation/promotion, deployment jobs, orchestration/repos, monitoring. |
 | Client questions | `design_docs/CLIENT_QUESTIONS.md` | The top-priority questions for the client, self-contained and sendable. |
 | ML serving lib | [github.com/cunha-sigma/ml_serving](https://github.com/cunha-sigma/ml_serving) | The MVP Go serving library (ONNX artifact + manifest, rollout config, hot-feature mirror, decision logs). Externalized repo; no local copy. |
 | Serving benchmark | [github.com/cunha-sigma/ml_serving_bench](https://github.com/cunha-sigma/ml_serving_bench) | Frozen serving-latency benchmark (engines `leaves` + ONNX Runtime, stage-placement arrangements, serving report). Externalized repo; no local copy. |

@@ -14,7 +14,7 @@ line, the DAG repo holds everything that says what gets built on it.
   materialization, training pipeline stages, evaluation and readout
   logic — plus the config schemas those workloads consume), published
   as a wheel per release. It contains no job definitions and nothing
-  model-specific, with one exception: the standing deployment job
+  model-specific, with one exception: the standing deployment jobs
   (below). Test fixtures are fixtures, not definitions.
 - DAG repo — all definitions: a small framework (job-spec builders,
   parameter parsing — it renders Databricks run specs as data and never
@@ -65,11 +65,15 @@ dag-repo/                          workload-repo/
 
 ## Pipelines are submitted, not pre-created
 
-The framework renders each run's full Databricks job spec at trigger
-time — tasks, compute from the pipeline YAML's tier, the wheel pinned
-to the YAML's `package_version` — and submits it through the Airflow
-Databricks provider (submit and wait for terminal state). No standing
-job objects exist for the pipelines; a pipeline is its folder.
+Airflow chains the stages: each pipeline stage is submitted as its own
+single-task Databricks run — compute from the pipeline YAML's tier, the
+wheel pinned to the YAML's `package_version` — through the Airflow
+Databricks provider (submit and wait for terminal state), and the DAG
+sequences them. Databricks never orchestrates; it only runs what it
+receives. No standing job objects exist for the pipelines; a pipeline
+is its folder. Run modes are Airflow logic too: the mode arrives as a
+trigger parameter and the DAG skips the stages the mode leaves out
+(`05_training.md`, Run modes); how exactly is the DAG repo's choice.
 
 Version coupling is explicit: a run executes exactly the package
 version its pipeline pins, so deploying a new workload release changes
@@ -116,44 +120,45 @@ parametrized over the models: per-model ownership lives in the data
   `05_training.md`'s; the rollout policy's (evidence mode, gate
   thresholds, bake times, traffic percentages, guardrail bounds) are
   `06_validation_promotion.md`'s. The rollout policy defines how
-  the rollout works (the deployment job's input, read from the
+  the rollout works (the deployment jobs' input, read from the
   registry); the rollout config is the rollout's current state (the
-  serving touchpoint the job writes to S3).
+  serving touchpoint the jobs write to S3).
 - The DAG passes the workload YAMLs to the run; the run validates them
   against its own schemas at start.
 - The training run registers the resolved model configuration and
   rollout policy with the model version (`05_training.md`). Runtime
-  consumers that are not DAG-triggered — the deployment job — read them
-  from the registry, never from the DAG repo.
+  consumers that are not DAG-triggered — the deployment jobs — read
+  them from the registry, never from the DAG repo.
 
-## The deployment job
+## The deployment jobs
 
-The one standing Databricks job, created from the one bundle in this
-repo (the bundle is the job's definition files, not the job itself). It
-is factory machinery: generic, model-agnostic, its per-model inputs
-arriving from the registry — so it belongs to the workload repo.
-`resources/deployment_job.yml` defines the job: its two execution
-branches, picked per run by the trigger (registration → claim,
-export, first advance; schedule → one readout pass that advances,
-holds, or aborts — `07_deployment_job.md`, Execution model), the
-per-task compute (every task is light — no task runs inference at the
-model's own scale, that happens in training), and the schedule. A third
-trigger exists at runtime: a monitoring alert (`09_monitoring.md`)
-starts a run of this same job through the jobs API, executing the
-abort path immediately instead of waiting for the next scheduled pass.
-`databricks.yml` declares the dev and prod targets. The workload repo's
-CI deploys it with the bundle per target; it runs the wheel its release
-shipped, which is correct for machinery. One definition, instantiated
-per environment by the bundle targets settles
-`07_deployment_job.md`'s environment question. Attaching it to a newly
-created model slot happens once, at the slot's first registration, from
-the training pipeline.
+The two standing Databricks jobs, created from the one bundle in this
+repo (the bundle is the jobs' definition files, not the jobs
+themselves). They are factory machinery: generic, model-agnostic, their
+per-model inputs arriving from the registry — so they belong to the
+workload repo. `resources/deployment_job.yml` defines both:
+`deploy-register`, triggered by a version registering (export, then
+claim and entry write, or the queue), and `deploy-readout`, scheduled —
+one pass that advances, holds, promotes, rolls back, or consumes the
+queue (`07_deployment_job.md`, Execution model). A third trigger
+exists at runtime: a monitoring alert (`09_monitoring.md`) starts a
+`deploy-readout` run through the jobs API, with optional model and
+version parameters, executing the abort path immediately instead of
+waiting for the next scheduled pass. Every run in either job is
+light — none performs inference at the model's own scale, that happens
+in training. `databricks.yml` declares the dev and prod targets. The
+workload repo's CI deploys them with the bundle per target; they run
+the wheel their release shipped, which is correct for machinery. One
+definition per job, instantiated per environment by the bundle
+targets, settles `07_deployment_job.md`'s environment question.
+Attaching `deploy-register` to a newly created model slot happens
+once, at the slot's first registration, from the training pipeline.
 
 ```mermaid
 flowchart LR
-  WR["workload repo"] --> CI2["CI: tests, wheel vX published,<br/>bundle deploy (deployment job)"]
+  WR["workload repo"] --> CI2["CI: tests, wheel vX published,<br/>bundle deploy (deployment jobs)"]
   CI2 --> WHL[/"versioned wheels"/]
-  CI2 --> DJ["deployment job<br/>(standing, per target)"]
+  CI2 --> DJ["deployment jobs ×2<br/>(standing, per target)"]
   DR["DAG repo"] --> CI1["CI: import tests +<br/>config validation vs schemas"]
   WR -. "schemas subpackage<br/>(CI-only import)" .-> CI1
   CI1 --> S3B[/"MWAA DAG bucket"/]
@@ -173,16 +178,23 @@ workspace) comes from the framework's environment config and the bundle
 targets, so an account split later changes deployment targets and the
 read grants the client extends, not the design. Pipeline YAMLs may pin different `package_version` per
 environment, so prod stays on a known release while dev tracks the
-latest. The deployment job is instantiated per environment by its
+latest. The deployment jobs are instantiated per environment by their
 bundle targets. Whether dev gets its own MWAA instance folds into the
 standing client question of reusing the client's MWAA versus running our own.
 
 ## CI/CD
 
+CI is GitHub Actions from the start (the QA lane may switch it later);
+workflow files only call make targets, so a switch rewrites the
+workflow files and nothing else.
+
 - Workload repo: lint + unit tests (including the light-import check:
   importing `schemas` must pull no ML dependencies) → build the wheel →
-  publish it versioned (lean: a Unity Catalog volume) → bundle deploy
-  of the deployment job to dev → smoke run on fixtures → prod on main.
+  publish it versioned to the package index — CodeArtifact as the
+  working assumption, origin controls marking the package
+  internal-only, so it installs from CI, laptops, notebooks, and
+  Databricks runs alike → bundle deploy of the deployment jobs to dev →
+  smoke run on fixtures → prod on a release tag.
 - DAG repo: DAG import tests (parse must succeed without the workload
   package installed), config validation of every pipeline's YAMLs
   against the workload package's schemas (a CI-only import of the
@@ -213,14 +225,11 @@ standing client question of reusing the client's MWAA versus running our own.
 1. MWAA: reuse the client's instance or run our own — the standing client
    question; decides where DAG code deploys and whether dev gets its
    own instance.
-2. CI tooling: the client's core-app practice (CodePipeline) versus
-   GitHub Actions; includes where versioned wheels are published (Unity
-   Catalog volume is the lean).
-3. Dev data: fixtures only, or a sampled slice of the curated datasets
+2. Dev data: fixtures only, or a sampled slice of the curated datasets
    — gated on the privacy compliance review (`PLAN.md` open question 4)
    and the DE lane's access mechanics.
-4. Repo hosting: the client's organization or ours.
-5. Account topology for dev versus prod: same account (the working
+3. Repo hosting: the client's organization or ours.
+4. Account topology for dev versus prod: same account (the working
    assumption) or separate accounts. Low design impact — it moves
    deployment targets, plus the cross-account read grants the client would need
    to extend to the new account — but tracked until settled.

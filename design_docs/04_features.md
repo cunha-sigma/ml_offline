@@ -241,8 +241,8 @@ Ordering rules, both directions:
 - Adding: add the definition, backfill its training values, deploy and
   verify its hot-feature job, and only then train and ship a model
   declaring it. A manifest must never declare a feature whose job is
-  not live; the deployment job's validation step checks that the
-  feature's keys exist in Redis before writing a config.
+  not live; the deployment jobs' config-write validation checks that
+  the feature's keys exist in Redis before writing a config.
 - Removing: ship a model that no longer declares the feature, wait out
   rollback horizons (the previous version may still be re-promoted),
   then stop the job and delete the definition. TTL clears the keys.

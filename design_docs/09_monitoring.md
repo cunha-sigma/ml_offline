@@ -4,7 +4,7 @@ The loop-closing doc: ingest what serving emits, measure models and
 pipelines, and decide when training runs again. Everything this doc
 triggers is specified elsewhere — the training pipeline in
 `05_training.md`, the verdict logic in `06_validation_promotion.md`,
-the deployment job in `07_deployment_job.md`, the scheduling in
+the deployment jobs in `07_deployment_job.md`, the scheduling in
 `08_orchestration_repos.md`. This doc owns the datasets built from
 decision rows, the metrics, the alerts, and the triggers.
 
@@ -14,10 +14,10 @@ flowchart LR
   ING["decision-ingest pipeline"]
   DEC[("decisions.scored_candidates")]
   LBL[("derived.labels<br/>+ cleaned.impressions")]
-  RO[("derived.readout_&lt;model&gt;<br/>per arm, version, revision")]
+  RO[("derived.readout_&lt;model&gt;<br/>per arm and version<br/>(revision sub-key)")]
   MON["model + data-quality monitoring"]
   TRIG["retraining triggers"]
-  DJ["deployment job<br/>readout task + abort path"]
+  DJ["deploy-readout job<br/>readout pass + abort path"]
   TRAIN["training DAG (MWAA)"]
 
   DLOG --> ING --> DEC
@@ -50,22 +50,25 @@ volumes before prod (`02_datasets.md` defers the number here).
 
 ## Per-arm readout tables
 
-`derived.readout_<model>` — aggregates per model, version, arm, and
-config revision, computed from decision rows joined with matured
-labels: row counts, score-distribution statistics, realized conversion
-rate per window, predicted-versus-realized calibration by decile, and
-the observed arm shares the sample-ratio check reads.
+`derived.readout_<model>` — aggregates per model, version, and arm,
+with the config revision as a sub-key, computed from decision rows
+joined with matured labels: row counts, score-distribution statistics,
+realized conversion rate per window, predicted-versus-realized
+calibration by decile, and the observed arm shares the sample-ratio
+check reads. Revision is a sub-key, not a grain: serving stamps it on
+every decision row and every config write bumps it, so a per-revision
+readout would fragment one state's rows.
 
 Two steps share the word "readout". Naming them precisely:
 
 | Name | Runs where | Reads | Writes / produces | Never does |
 |---|---|---|---|---|
-| readout-table build | task in the decision-ingest pipeline (this doc, scheduled per `08_orchestration_repos.md`) | `decisions.scored_candidates`, matured labels, impressions | `derived.readout_<model>` (incremental refresh of touched partitions) | decide anything |
-| readout pass | the deployment job (`07_deployment_job.md`) | `derived.readout_<model>`, rollout-config state, approval tags | verdict — advance / hold / abort — as a config write, per the rollout policy (`06_validation_promotion.md`) | aggregate anything |
+| readout-table build | a stage of the decision-ingest pipeline, chained by Airflow like any other (this doc, scheduled per `08_orchestration_repos.md`) | `decisions.scored_candidates`, matured labels, impressions | `derived.readout_<model>` (incremental refresh of touched partitions) | decide anything |
+| readout pass | the `deploy-readout` job (`07_deployment_job.md`) | `derived.readout_<model>`, rollout-config state, approval tags | verdict — advance / hold / abort — as a config write, per the rollout policy (`06_validation_promotion.md`) | aggregate anything |
 
 The trailing confirmation is the readout pass judging a promoted model
-whose version carries an active `trailing_until` tag (stamped by the
-promote task after a proxy-mode promotion): the full window's maturing
+whose version carries an active `trailing_until` tag (stamped at
+promotion under the proxy evidence mode): the full window's maturing
 labels, rollback armed, until the tag expires.
 
 The detailed dataflow — who produces what, where it lands, who reads
@@ -77,17 +80,17 @@ flowchart TB
   AGENT["Bidding Agent (ml_serving lib)<br/>emits one row per scored candidate"]
   LAND[/"S3 decision-log landing zone"/]
 
-  subgraph PIPE["decision-ingest pipeline (scheduled, 08_orchestration_repos.md)"]
-    ING["ingest task<br/>type, dedup, partition"]
-    RTB["readout-table build<br/>join + aggregate"]
+  subgraph PIPE["decision-ingest pipeline (stages chained by Airflow, 08_orchestration_repos.md)"]
+    ING["ingest stage<br/>type, dedup, partition"]
+    RTB["readout-table build stage<br/>join + aggregate"]
   end
 
   DEC[("decisions.scored_candidates<br/>partitioned by scored-at date")]
   LBLS[("derived.labels, matured<br/>+ cleaned.impressions")]
-  RO[("derived.readout_&lt;model&gt;<br/>per arm, version, revision")]
+  RO[("derived.readout_&lt;model&gt;<br/>per arm and version<br/>(revision sub-key)")]
 
   CFGS[/"rollout config (state)<br/>+ approval tags (registry)"/]
-  PASS["deployment job: readout pass<br/>(07_deployment_job.md)<br/>thresholds from the rollout policy"]
+  PASS["deploy-readout: readout pass<br/>(07_deployment_job.md)<br/>thresholds from the rollout policy"]
   VER["verdict: advance / hold / abort<br/>= new config revision, or rollback"]
 
   AGENT --> LAND --> ING --> DEC
@@ -146,7 +149,7 @@ guard the feed itself: freshness catches data not arriving (newest
 partition age vs. the expected cadence, per dataset), reconciliation
 catches data arriving wrong (our cleaned totals vs. the client's own hourly
 rollups, on normalized units). The training pipeline and the deployment
-job write nothing here. No separate data-quality DAG exists.
+jobs write nothing here. No separate data-quality DAG exists.
 
 | Check | Written by | Computed from | Rule → action |
 |---|---|---|---|
@@ -173,8 +176,8 @@ choice is ours; Databricks-native SQL alerts are the fallback shape if
 a second pane is acceptable.
 
 Rollout guardrails on serving health have a named producer: alert rules
-we define in the observability stack, whose action starts the
-deployment job's abort path through the jobs API
+we define in the observability stack, whose action starts a
+`deploy-readout` run through the jobs API, taking the abort path
 (`07_deployment_job.md`). They never route through the daily monitoring
 job.
 
@@ -188,8 +191,8 @@ degradation triggers from the model-monitoring table above
 run, or tune and train per the model's tuning spec; threshold values
 set at EDA). Mechanically, the monitoring workload records the verdict
 and the monitoring DAG triggers the model's training DAG in MWAA. Guardrail breaches during a rollout
-take the faster path: they start the deployment job's abort branch
-directly through the jobs API (`07_deployment_job.md`), never waiting
+take the faster path: they start a `deploy-readout` run directly
+through the jobs API (`07_deployment_job.md`), never waiting
 for a readout schedule.
 
 ## Bidder response dataset

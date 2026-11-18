@@ -81,8 +81,8 @@ Two dedicated repos, separate from the serving lib
    configuration, and rollout policy.
 2. **Workload repo** — the pipeline-agnostic versioned Python package
    (training, calibration, ETL, feature logic, config schemas) plus the
-   single standing-job bundle (the deployment job). Nothing
-   model-specific lives here.
+   standing-jobs bundle (the two deployment jobs, `deploy-register` and
+   `deploy-readout`). Nothing model-specific lives here.
 
 Pipelines are submitted at trigger time with the pinned package
 version; no standing pipeline jobs exist. `design_docs/` itself is the
