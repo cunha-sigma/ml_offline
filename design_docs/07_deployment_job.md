@@ -2,7 +2,7 @@
 
 The deployment side of the rollout: two standing Databricks jobs, what
 triggers each, and the exact writes they make into the two touchpoints
-serving reads (the artifact store and the rollout config). One
+these jobs own (the artifact store and the rollout config). One
 component, two docs: `06_validation_promotion.md` owns the decision
 logic the readout runs on (gates, thresholds, approval placement); this
 doc is the mechanics only.
@@ -61,14 +61,16 @@ One run, two steps, in a fixed order:
      evaluation here, that already happened in training before the
      version was allowed to register) and write the next config
      revision with the version as challenger at fleet load.
-   - slot busy: write the version's full artifact reference —
-     version, uri, checksums — to `queued`, shaped to enter at fleet
-     load when the readout consumes it. No claim: the challenger alias
+   - slot busy: write the version's full artifact reference to
+     `queued` — exactly the `{version, uri, checksums}` shape the
+     serving schema documents; the version enters at fleet load when
+     the readout consumes it (the entry state is fixed by design, not
+     stored in the entry). No claim: the challenger alias
      belongs to the version already in flight.
    - new slot (no config exists): write the slot's first config (A
      slot's first version, below).
 
-The entry stage is always this job's choice, recorded in the write;
+The entry is always this job's choice;
 `deploy-readout` only moves a queued version in and then judges it.
 
 A retried run repeats nothing: export skips when the published files
@@ -81,22 +83,29 @@ The lib rejects a config without a valid champion, so a slot's first
 version cannot enter as challenger. The first registration writes the
 slot's first config directly: revision 1, the version as champion,
 skipping the rollout states and the approval tag. Nothing serves until
-the serving side launches the goal, and that launch — deliberate by
-nature — is the gate (`06_validation_promotion.md`, Approval gates).
+the serving side launches the goal, and that launch, deliberate by
+nature, is the gate (`06_validation_promotion.md`, Approval gates).
 The config must exist before any pod is configured for the slot. From
 the second version on, the normal entry path applies unchanged.
 
 ## deploy-readout
 
-One pass per run: read the config state, the model-version tags, and
-the pre-aggregated per-arm tables (`09_monitoring.md`), then do at most
+One pass per run: read the config state, the model-version tags, the
+pre-aggregated per-arm tables (`09_monitoring.md`), and the
+serving-health telemetry the observability stack exposes (fleet
+version coverage from the lib's model-loaded counter, the shadow
+attempted-versus-dropped counters — the lib expects the deployment
+side to watch these fleet-wide), then do at most
 one of:
 
 - advance — write the next rollout state's config revision. A rollout
   state is nothing more than a particular config content; advancing
   means writing a new revision with the next state's fields (fleet
   load, shadow, canary ramp — A/B nested inside the ramp when the
-  policy enables it, `06_validation_promotion.md`).
+  policy enables it, `06_validation_promotion.md`). The shadow
+  revision always sets the challenger's `sample_rate`: the lib samples
+  nothing without it, and the lib's own validation does not catch the
+  omission.
 - hold — exit without writing; at an active gate, notify the approver.
 - promote — on a full pass through every state, move the champion and
   previous aliases and write the final config. A promotion under the
@@ -108,8 +117,9 @@ one of:
 - consume the queue — no rollout in flight and a version in `queued`:
   move it to challenger in a plain config write — next revision,
   challenger alias set, `queued` cleared. The queued entry already
-  carries the artifact reference and entry stage `deploy-register`
-  recorded; later passes judge it like any challenger.
+  carries the artifact reference `deploy-register` recorded, and the
+  moved version always enters at fleet load; later passes judge it
+  like any challenger.
 
 Gate 2, before final promotion, is fixed by
 `06_validation_promotion.md` for every policy (one exception: a slot's
@@ -132,12 +142,12 @@ one state.
 The schedule is a standing property of the job definition, never
 paused or mutated at runtime (the bundle stays the source of truth).
 Termination is logical: a terminal config has no challenger section and
-no `queued` entry, so later passes no-op — with one exception: a model
+no `queued` entry, so later passes no-op, with one exception: a model
 version carrying an active `trailing_until` tag is still judged by each
 pass (the trailing confirmation after a proxy-mode promotion; breach
 writes the rollback, expiry ends the judging). One schedule serves
-every model's rollout — the pass scans all slots' configs and the
-trailing tags — while the registration trigger stays per model version.
+every model's rollout (the pass scans all slots' configs and the
+trailing tags) while the registration trigger stays per model version.
 
 Slot discovery: list the known config prefix — one
 `rollout_config.json` per model slot, sibling to that slot's
@@ -148,9 +158,10 @@ flowchart LR
   REG(["new version<br/>registers"]) --> EXP["deploy-register:<br/>export to S3 (always)"]
   EXP --> SLOTCHECK{"slot?"}
   SLOTCHECK -- "free" --> EEA["claim + entry write<br/>(challenger at fleet load)"]
-  SLOTCHECK -- "busy" --> ENQUEUE[("queued: version,<br/>uri, checksums")]
+  SLOTCHECK -- "busy" --> ENQUEUE["write queued entry<br/>(version, uri, checksums)"]
   SLOTCHECK -- "none yet" --> FIRST["first config:<br/>revision 1, champion"]
   EEA --> CFG[("rollout_config.json")]
+  ENQUEUE --> CFG
   FIRST --> CFG
 
   SCHED(["schedule fires"]) --> PASS["deploy-readout:<br/>list the config prefix"]
@@ -160,8 +171,9 @@ flowchart LR
   CFG2 -- "challenger present" --> DECIDE["check readout table<br/>against rollout policy"]
   RT[("readout table")] --> DECIDE
   POL[("rollout policy")] --> DECIDE
-  DECIDE -- "at a gate,<br/>no approval tag" --> HOLD["hold"]
+  DECIDE -- "at a gate,<br/>no approval tag" --> HOLD["hold, notify approver"]
   DECIDE -- "approved or<br/>no gate due" --> CFGW2[("next revision:<br/>advance, promote, roll back")]
+  MOVE --> CFGW2
   CFGW2 -. "on promote" .-> ALIAS["champion/previous aliases<br/>(UC, audit)"]
 
   ALERT(["guardrail alert<br/>(model + version params)"]) --> ABORT["deploy-readout:<br/>abort immediately"]
@@ -198,8 +210,7 @@ rollbacks. Every write:
   well formed. A failed validation aborts the write and the previous
   revision keeps serving.
 - carries real checksums (`sha256:<hex digest>`; the lib's verifier
-  compares the full string, so the format is enforced in practice even
-  while the config schema itself is still draft-for-review) computed
+  compares the full string) computed
   from the published files, never placeholder values. The `queued`
   entry carries them too — the same `{version, uri, checksums}` shape
   the serving docs document.
@@ -254,7 +265,7 @@ a trigger.
 
 Superseding happens the moment a newer version registers, not when the
 slot finally resolves: if N+1 is queued and N+2 registers while the
-slot is still busy, N+2 overwrites N+1 right then — N+1 is gone well
+slot is still busy, N+2 overwrites N+1 right then; N+1 is gone well
 before the slot ever resolves, not filtered out afterward. It never
 aborts a version that's already running its entry or sitting through
 shadow and canary — only "latest wins" among whoever is still waiting.

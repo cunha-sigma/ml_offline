@@ -38,8 +38,11 @@ the lib's logger to is the serving side's open choice; S3 is the
 working assumption). The decision-ingest pipeline — scheduled and
 defined like every other pipeline (`08_orchestration_repos.md`), every
 30 minutes as the proposal — loads them into
-`decisions.scored_candidates` (`02_datasets.md`): typed, deduplicated,
-partitioned by scored-at date. The cadence keeps canary and shadow
+`decisions.scored_candidates` (`02_datasets.md`): typed, deduplicated
+on (`request_id`, `candidate_id`, arm, model version) — shadow rows
+share the request and candidate keys with the served row, so a
+two-field key would collapse them — and partitioned by scored-at
+date. The cadence keeps canary and shadow
 readouts fresh during rollouts. Rows join served impressions and labels
 by (`request_id`, `candidate_id`).
 
@@ -57,14 +60,16 @@ realized conversion rate per window, predicted-versus-realized
 calibration by decile, and the observed arm shares the sample-ratio
 check reads. Revision is a sub-key, not a grain: serving stamps it on
 every decision row and every config write bumps it, so a per-revision
-readout would fragment one state's rows.
+readout would fragment one state's rows. `arm` includes `shadow`
+during shadow mode; shadow rows carry no routing salt or unit by
+design and are excluded from the sample-ratio check.
 
 Two steps share the word "readout". Naming them precisely:
 
 | Name | Runs where | Reads | Writes / produces | Never does |
 |---|---|---|---|---|
 | readout-table build | a stage of the decision-ingest pipeline, chained by Airflow like any other (this doc, scheduled per `08_orchestration_repos.md`) | `decisions.scored_candidates`, matured labels, impressions | `derived.readout_<model>` (incremental refresh of touched partitions) | decide anything |
-| readout pass | the `deploy-readout` job (`07_deployment_job.md`) | `derived.readout_<model>`, rollout-config state, approval tags | verdict — advance / hold / abort — as a config write, per the rollout policy (`06_validation_promotion.md`) | aggregate anything |
+| readout pass | the `deploy-readout` job (`07_deployment_job.md`) | `derived.readout_<model>`, rollout-config state, approval tags, serving-health telemetry | verdict — advance / hold / promote / roll back / queue move — as a config write, per the rollout policy (`06_validation_promotion.md`) | aggregate anything |
 
 The trailing confirmation is the readout pass judging a promoted model
 whose version carries an active `trailing_until` tag (stamped at
@@ -91,7 +96,7 @@ flowchart TB
 
   CFGS[/"rollout config (state)<br/>+ approval tags (registry)"/]
   PASS["deploy-readout: readout pass<br/>(07_deployment_job.md)<br/>thresholds from the rollout policy"]
-  VER["verdict: advance / hold / abort<br/>= new config revision, or rollback"]
+  VER["verdict: advance / hold / promote<br/>/ roll back / queue move<br/>= new config revision"]
 
   AGENT --> LAND --> ING --> DEC
   DEC --> RTB
@@ -102,9 +107,10 @@ flowchart TB
   PASS --> VER
 ```
 
-Defaulted-feature rates come from the scored-versus-default flag each
-decision row carries: the share of candidates scored with at least one
-defaulted feature, per arm.
+Defaulted-feature rates come from the per-candidate defaulted-fields
+list each decision row carries: the share of candidates scored with at
+least one defaulted feature, per arm — and, because the row names the
+fields, a per-field rate backing the single-broken-feature alert.
 
 ## Model monitoring
 
@@ -123,7 +129,7 @@ training run's logged artifacts (`05_training.md`).
 | calibration | champion decision rows joined with matured labels, per window | reliability by decile + expected calibration error; cuts: advertiser tier, campaign, time slice | error beyond bound for N consecutive days → recalibrate-only run; persistently high per-advertiser-tier error → flag for advertiser-layer activation (human review, `05_training.md`) |
 | score drift | live score distribution from decision rows vs. the training run's logged holdout distribution | population stability index (a bucketed divergence score) | sustained drift beyond bound → a full train run + alert |
 | input drift | logged inputs and hot-feature values vs. the training run's logged input distributions | per-feature divergence + null shares | sustained drift on high-importance features → a full train run; a single broken feature → alert the feature pipeline, no retrain |
-| defaulted-feature rate | the scored-versus-default flag per candidate | share of candidates defaulted, per model over time | step change → alert (a feature job or the agent's fields drifted from the manifest); never a retrain trigger |
+| defaulted-feature rate | the per-candidate defaulted-fields list | share of candidates defaulted, per model over time, plus per-field rates | step change → alert (a feature job or the agent's fields drifted from the manifest); never a retrain trigger |
 | cost per action | readout tables, per goal | realized cost against the goal, as an expected-performance signal (never a guarantee of observed CPA per period — the client's framing) | reported only; business signal, not a trigger |
 
 ```mermaid

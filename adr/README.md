@@ -1,4 +1,4 @@
-# the client — Architecture Decision Records
+# Architecture Decision Records — client bidding agent, ML lane
 
 Decision record for the **client custom-bidding-agent**, with an **ML-lane focus** (the `P(Goal Action | Impression)` service and its offline pipeline). This folder holds only **critical, load-bearing decisions** — not every step. Add an ADR when a choice would be expensive to reverse or is needed to keep future work coherent.
 

@@ -50,6 +50,10 @@ phrased to send.
 | Repo hosting (client organization or ours) | team + client | `08_orchestration_repos.md` OQ3 |
 | Dev/prod account topology (working assumption: same account) | team + infra | `08_orchestration_repos.md` OQ4 |
 
+`PLAN.md` OQ6 is a rollup of `08_orchestration_repos.md`'s open
+questions; its surviving items live in the client table (MWAA; dev
+data under the privacy row) and the two rows above.
+
 ## Serving-side changes to schedule ([ml_serving](https://github.com/cunha-sigma/ml_serving))
 
 The work list the design still requires from the serving lib; the
@@ -57,12 +61,24 @@ designs here already assume these shapes.
 
 | Change | For |
 |---|---|
-| The shadow scorer, with attempted-versus-dropped counters | the shadow readout's sampling-integrity check |
 | An S3 source for the rollout config (or an S3-to-file sync); the artifact S3 source exists | the deployment jobs write S3; the lib must read it |
-| Per-candidate goal (and window) in the scoring response — or close as satisfied by slot identity, since each slot serves one goal | the bid-decision step and decision reconstruction |
+| Per-candidate goal (and window), model name, and config revision in the scoring response — or close as satisfied by slot identity plus the decision record (each slot serves one goal; the revision rides the decision row) | the bid-decision step, decision reconstruction, and the response contents ADR-0001 states |
+| Validate (or default) `challenger.sample_rate`: an absent or zero rate makes shadow silently score nothing, and the lib's config validation accepts it | safe shadow-stage config writes |
+| Every model input in the decision row, hot-feature values included — today the lib logs the request and candidate input maps only | input-drift monitoring and train/serve skew checks on decision rows |
 | Staged config propagation and alarm-rollback ownership | safe config rollout at fleet scale |
+| Redis credential-rotation ownership: the lib gained auth/TLS options, rotation is an open serving-side question, and the candidate schemes are ops-only — ours to co-own as the store's writers | the hot-store write path |
+| Doc alignment: the serving docs still describe `queued` as jobs-API self-trigger bookkeeping (consumption is now a plain config write by the readout pass) and still list offline replay as the adopted rollout's step 1 (replaced by the absolute training-time gate) | serving docs matching the agreed design |
 
-Shipped by the lib (verified 2026-11-04): decision rows carry request
+Standing prerequisite, not a code ask: shadow scoring runs only on
+pods built with the lib's shadow-sessions option (a process setting
+the rollout config cannot enable), and those sessions are a permanent
+core reservation — both feed the serving capacity sizing.
+
+Shipped by the lib (verified 2026-11-18, commits through 2026-11-13):
+the shadow scorer — bounded worker pool, attempted-versus-dropped
+counters, queue-depth gauge, shadow rows to the decision logger under
+the `shadow` arm; `Slot.LiveVersions` for fleet version coverage;
+Redis auth and TLS options; decision rows carry request
 id, model inputs, routing salt, routing-unit value, and per-candidate
 defaulted fields; the scoring response is per-candidate (probability,
 arm, model version, defaulted fields); the rollout config has
@@ -70,11 +86,9 @@ fleet-load/shadow/canary modes with A/B nested in the ramp and a
 `queued` slot; metrics are dimensioned by model/arm/version; challenger
 routing is wired (champion fallback on missing unit or unloaded
 challenger); the artifact source reads S3; slot naming is documented
-lib-side; and the serving repo closed its approval-placement and
-label-delay questions with the `06_validation_promotion.md` answers.
-
-`PLAN.md` OQ6 is a rollup of `08_orchestration_repos.md`'s list; the
-rows above cover what survives of it.
+lib-side; the serving repo closed its approval-placement and
+label-delay questions with the `06_validation_promotion.md` answers,
+and closed schema review as ML-lane-owned (no external gate).
 
 Excluded as settled (resolved during the design audits): Max CPA
 availability at bid time, probability-versus-expected-value interface,

@@ -208,10 +208,11 @@ Each component is owned by one detail doc.
   `07_deployment_job.md`) — two standing Databricks jobs.
   `deploy-register`, attached to the registered model and triggered
   when a new version registers: export always first (the artifact pair
-  to an immutable S3 path), then claim (sets the challenger alias —
-  training already gated quality, no replay here) and the entry write
-  (challenger at fleet load, the queue on a busy slot, or a new slot's
-  first champion). `deploy-readout`, scheduled, with an alert trigger
+  to an immutable S3 path), then the entry — on a free slot, claim
+  (sets the challenger alias — training already gated quality, no
+  replay here) plus the config write entering at fleet load; on a busy
+  slot, the queue (no claim); on a new slot, the first config with the
+  version as champion. `deploy-readout`, scheduled, with an alert trigger
   for immediate aborts: one pass that advances the rollout (the next
   config revision — the config's content is the state), reads out the
   per-arm tables from decision rows and matured labels, promotes or
@@ -242,8 +243,9 @@ Each component is owned by one detail doc.
 
 What serving expects is defined in the
 [`ml_serving`](https://github.com/cunha-sigma/ml_serving) repo (its
-`docs/SCHEMAS.md` and `testdata/`; the schema drafts are pending team
-review, and the shapes below are the working contract). This section
+`docs/SCHEMAS.md` and `testdata/`; the schemas are owned end to end by
+the ML lane — no external review gate — and the shapes below are the
+working contract). This section
 states the offline-side obligations.
 
 ### 1. Published artifact
@@ -266,7 +268,10 @@ rewritten.
 Path: `<model_name>/rollout_config.json`, sibling to that model's
 `v<version>/` artifact folders. One mutable JSON per model slot: `model_name`, monotonic `revision`,
 `updated_at` and `updated_by` for audit, `champion` (`version`, `uri`,
-`checksums` for both files), `challenger` and `routing`, and `queued`
+`checksums` for both files), `challenger` (the same reference plus
+`sample_rate`, the shadow sampling fraction — absent means shadow
+scores nothing and the lib's validation does not catch it, so our
+shadow revision always sets it), `routing`, and `queued`
 (holds at most one version waiting on a busy slot — a newer
 registration overwrites it, not a FIFO backlog; the lib carries it
 through unvalidated, it is deployment-job state). Slots
@@ -298,12 +303,18 @@ and the agent. The exact service choice is deferred.
 
 ### 4. Decision logs
 
-One row per scored candidate. The lib's `DecisionRecord` carries:
+One row per scored candidate per arm (`arm` takes
+champion/challenger/shadow; shadow rows carry empty routing fields by
+design). The lib's `DecisionRecord` carries:
 model name, version, arm, config revision, request id, candidate id,
 probability, the model inputs (numeric and text), the routing salt,
 the routing-unit value, the per-candidate defaulted fields, and the
-timestamp. Rows join impressions and labels by
-`(request_id, candidate_id)`. Offline obligations: ingest
+timestamp. The lib logs the request and candidate input maps; the
+hot-feature values read from the mirror are not yet in the row — our
+standing ask is that every model input, hot features included, lands
+in the record (the serving-side work list). Rows join impressions and
+labels by `(request_id, candidate_id)` plus arm and version for
+uniqueness. Offline obligations: ingest
 the rows into the dataset layers and build the per-arm readout tables
 the `deploy-readout` job's pass judges. Decision logs also feed
 monitoring, and are the raw material for the bidder

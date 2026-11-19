@@ -3,9 +3,9 @@
 The training pipeline: from matured labels and feature definitions to a
 registered model version carrying a parity-checked serving artifact.
 Upstream, `09_monitoring.md` owns when runs happen and MWAA triggers
-them; downstream, registration in Unity Catalog starts the deployment
-job (`07_deployment_job.md`), which publishes what this pipeline
-already produced. This doc is the full design; which capabilities the
+them; downstream, registration in Unity Catalog starts the
+`deploy-register` job (`07_deployment_job.md`), which publishes what
+this pipeline already produced. This doc is the full design; which capabilities the
 first implementation activates is an operational decision, not part of
 it.
 

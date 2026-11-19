@@ -99,7 +99,10 @@ inside each row await the inventory.
   impression-level attribution is the label source. Its spend fields arrive in normalized
   currency while win-log costs arrive in micros; the cleaned layer's
   unit normalization is what makes the reconciliation comparable.
-- Scored candidates — one row per candidate the serving lib scored.
+- Scored candidates — one row per (candidate, arm) the serving lib
+  scored: during shadow mode the same candidate yields a served row
+  and a `shadow` row, so uniqueness is (`request_id`, `candidate_id`,
+  arm, model version), never (`request_id`, `candidate_id`) alone.
   Joins served impressions and labels by (`request_id`,
   `candidate_id`); supports per-arm aggregation by model, version,
   arm, and revision.

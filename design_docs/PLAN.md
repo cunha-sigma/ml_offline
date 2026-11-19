@@ -18,10 +18,11 @@ touchpoints:
    strings pass through. The manifest carries the input schema and the
    hot-feature join spec (join keys, `key_template`, default).
 2. Rollout config — one small mutable JSON per model slot: champion
-   (later challenger + routing), version, artifact URI, checksums,
+   (later challenger + routing, plus `queued` for a version waiting on
+   a busy slot), version, artifact URI, checksums,
    audit fields (`updated_at`, `updated_by`), and a monotonically
-   increasing `revision` that triggers hot swap. Written by a deployment
-   job; the lib never talks to MLflow/Databricks. Slots are named per
+   increasing `revision` that triggers hot swap. Written by the
+   deployment jobs; the lib never talks to MLflow/Databricks. Slots are named per
    goal (later per goal and window); the bidding agent groups
    candidates by goal and calls the lib per slot, so a new goal is a
    new slot, not an interface change.
@@ -33,7 +34,8 @@ touchpoints:
 4. Decision logs — one row per scored candidate, emitted through the
    lib's logger interface: model, version, arm, revision, request id,
    candidate id, probability, timestamp, the model inputs, the routing
-   salt, the routing-unit value, and a scored-versus-default flag. We
+   salt, the routing-unit value, and the per-candidate defaulted
+   fields. We
    use them for evaluation, drift, and rollout readout — never as the
    label universe.
 
@@ -239,7 +241,7 @@ The doc set is complete: 00–09 written.
    conditions on a served impression — they enter only as feature and
    analysis sources.
 6. Orchestration-side opens, detailed in `08_orchestration_repos.md`:
-   MWAA reuse versus our own instance; CI tooling and wheel publishing;
+   MWAA reuse versus our own instance;
    repo hosting; dev-data policy; dev/prod account topology (same
    account is the working assumption).
 
