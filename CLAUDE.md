@@ -18,7 +18,7 @@ Final Bid = λ × Max CPA × P(Goal Action | Impression)
 
 Four logical services: **Bid Ingestor/Processor**, **Discount Pacing (λ)**, **ML Prediction (Expected Value / Ad Ranking)**, **Bid Decision/Response**.
 
-Ad sets will carry two new fields (batch-02 ML report): **`bidding_strategy`** ∈ {`max_cpm`, `goal_cpa`, `lowest_cost` ("auto bid")} and **`optimization_goal`** — the action to predict, which selects the model (`impressions` needs none, `P = 1`). Our first-stage contract proposal (batch-03 `contracts/`, Sigma-authored, unconfirmed) narrows stage 1 to `MAX_CPM` | `GOAL_CPA` and proposes a static 14-day attribution window. Initial models: **Page View and Purchase**. Today all the client's advertisers are effectively **awareness** (`bid = λ × Max CPM`, probability = 1). This project unlocks **performance** (CPA) bidding.
+Ad sets will carry two new fields (batch-02 ML report): **`bidding_strategy`** ∈ {`max_cpm`, `goal_cpa`, `lowest_cost` ("auto bid")} and **`optimization_goal`** — the action to predict, which selects the model (`impressions` needs none, `P = 1`). Our first-stage contract proposal (batch-03 `contracts/`, Sigma-authored, unconfirmed) narrows stage 1 to `MAX_CPM` | `GOAL_CPA` and proposes a static 14-day attribution window. Initial models: **Page View and Purchase**. Today all the client's advertisers are effectively **awareness** (per impression `bid = λ × max_bid / 1000`, probability = 1 — the client requires consistent per-impression units end to end). This project unlocks **performance** (CPA) bidding.
 
 ## Our lane
 

@@ -26,8 +26,10 @@ flowchart LR
 ```
 
 - **Routing** — every case gets assigned to exactly one arm, by a rule
-  with two properties: *sticky* (the same unit — e.g. the same
-  `line_item_id` — always lands in the same arm for the whole test, so
+  with two properties: *sticky* (the same unit — e.g. the same request
+  key, publisher, or household; the serving router accepts
+  request-level fields only, candidate-level keys like a line-item id
+  are refused — always lands in the same arm for the whole test, so
   its traffic isn't smeared across both and its outcomes stay
   attributable to one arm) and *uncorrelated with outcome* (the thing
   you split on must have nothing to do with what you're measuring —

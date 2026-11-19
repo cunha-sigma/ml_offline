@@ -149,7 +149,7 @@ Read-only, scoped per source: one credential (IAM role, Lake Formation
 grant, or storage credential, depending on the mechanism chosen) per
 external location, least privilege, no write access to any client bucket
 or table. Writes into the serving-shared state (artifact store, rollout config)
-are the deployment job's alone (`07_deployment_job.md`); our pipelines
+are the deployment jobs' alone (`07_deployment_job.md`); our pipelines
 write only our own catalogs and Redis, never the client location.
 
 ## Cadence

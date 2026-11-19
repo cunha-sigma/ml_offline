@@ -49,7 +49,7 @@ flowchart TB
     TS["Training set<br/>point-in-time join of features and labels"]
     TRAIN["Training, calibration, ONNX export<br/>MLflow tracking"]
     REG["UC model registry"]
-    DEPLOYJOB["Deployment job (Databricks)<br/>claim, export, advance rollout,<br/>read out, promote or roll back<br/>+ scheduled readout passes"]
+    DEPLOYJOB["Deployment jobs (Databricks)<br/>deploy-register: export + entry<br/>deploy-readout: scheduled passes —<br/>advance, read out, promote or roll back"]
     HOTDAG["Hot-feature jobs (batch)"]
     FTAB[("derived.feature_<model>_*<br/>materialized aggregates")]
     ROUT[("derived.readout_* +<br/>monitoring tables")]
@@ -114,15 +114,16 @@ auction. The same rule covers the client's auction and bid data: the label
 universe is served impressions, because `P(Action | Impression)`
 conditions on one; auction and bid data enter only as feature and
 analysis sources. Guardrail breaches on serving health route directly
-from the observability stack's own alert rules to the deployment job's
-abort path through the jobs API — never through the monitoring job
-above (`09_monitoring.md`). One Databricks deployment job, triggered
-when training registers a new version, owns the whole rollout: each
-rollout state (fleet load, shadow, canary ramp — A/B nested inside the
-ramp when a policy enables it) is
-just a content of the rollout config, and the job advances by writing successive
-revisions, reading out the per-arm tables between advances. It is the
-only writer of shared state.
+from the observability stack's own alert rules to the `deploy-readout`
+job's abort path through the jobs API — never through the monitoring
+job above (`09_monitoring.md`). Two standing Databricks jobs own the
+rollout: `deploy-register`, triggered when training registers a new
+version, publishes the artifact and enters the version into the
+rollout; `deploy-readout`, scheduled, advances by writing successive
+config revisions — each rollout state (fleet load, shadow, canary
+ramp — A/B nested inside the ramp when a policy enables it) is just a
+content of the rollout config — reading out the per-arm tables between
+advances. They are the only writers of shared state.
 
 ## Goals and models
 
@@ -203,26 +204,29 @@ Each component is owned by one detail doc.
   export as Databricks workloads with MLflow tracking. The export bakes
   preprocessing, model, and calibration into one graph and gates on an
   ONNX-versus-Python parity check.
-- Deployment job (`06_validation_promotion.md`,
-  `07_deployment_job.md`) — one Databricks job attached to the
-  registered model, triggered when a new version registers, one task per
-  step: claim (sets the challenger alias —
-  training already gated quality, no replay here), export (the artifact pair to an immutable S3
-  path), advance the rollout (write the next config revision), read out
-  (per-arm tables from decision rows and matured labels), promote or
-  roll back (move the champion and previous aliases; rollback is a
-  config write pointing at a previous version). The advance and readout
-  tasks loop through the rollout states as scheduled passes of the same
-  job, with an alert trigger for immediate aborts; the rollout config's
-  content is the state (`07_deployment_job.md`, Execution model). Two docs, one component: `06`
-  owns the decision logic
-  (gates, metrics, readout, approval placement), `07` owns the job
-  itself (task structure, export and config-write mechanics). Not an
-  MWAA DAG.
-- Orchestration (`08_orchestration_repos.md`) — MWAA DAGs submit the
-  data, feature, and training runs to Databricks at trigger time, each
-  pinned to its pipeline's `package_version` (the deployment job is the
-  exception: a standing job triggered by model registration). Two
+- Deployment jobs (`06_validation_promotion.md`,
+  `07_deployment_job.md`) — two standing Databricks jobs.
+  `deploy-register`, attached to the registered model and triggered
+  when a new version registers: export always first (the artifact pair
+  to an immutable S3 path), then the entry — on a free slot, claim
+  (sets the challenger alias — training already gated quality, no
+  replay here) plus the config write entering at fleet load; on a busy
+  slot, the queue (no claim); on a new slot, the first config with the
+  version as champion. `deploy-readout`, scheduled, with an alert trigger
+  for immediate aborts: one pass that advances the rollout (the next
+  config revision — the config's content is the state), reads out the
+  per-arm tables from decision rows and matured labels, promotes or
+  rolls back (move the champion and previous aliases; rollback is a
+  config write pointing at a previous version), and consumes the queue
+  (`07_deployment_job.md`, Execution model). Two docs, one component:
+  `06` owns the decision logic (gates, metrics, readout, approval
+  placement), `07` owns the jobs themselves (structure, export and
+  config-write mechanics). Not MWAA DAGs.
+- Orchestration (`08_orchestration_repos.md`) — MWAA DAGs chain each
+  pipeline's stages as single-task Databricks runs at trigger time,
+  each pinned to its pipeline's `package_version` (the deployment jobs
+  are the exception: standing jobs, one registration-triggered, one
+  scheduled). Two
   dedicated repos split definitions from machinery: the DAG repo holds
   the framework and every per-model definition; the workload repo is
   the pipeline-agnostic versioned package. A manual backfill DAG
@@ -239,8 +243,9 @@ Each component is owned by one detail doc.
 
 What serving expects is defined in the
 [`ml_serving`](https://github.com/cunha-sigma/ml_serving) repo (its
-`docs/SCHEMAS.md` and `testdata/`; the schema drafts are pending team
-review, and the shapes below are the working contract). This section
+`docs/SCHEMAS.md` and `testdata/`; the schemas are owned end to end by
+the ML lane — no external review gate — and the shapes below are the
+working contract). This section
 states the offline-side obligations.
 
 ### 1. Published artifact
@@ -263,7 +268,10 @@ rewritten.
 Path: `<model_name>/rollout_config.json`, sibling to that model's
 `v<version>/` artifact folders. One mutable JSON per model slot: `model_name`, monotonic `revision`,
 `updated_at` and `updated_by` for audit, `champion` (`version`, `uri`,
-`checksums` for both files), `challenger` and `routing`, and `queued`
+`checksums` for both files), `challenger` (the same reference plus
+`sample_rate`, the shadow sampling fraction — absent means shadow
+scores nothing and the lib's validation does not catch it, so our
+shadow revision always sets it), `routing`, and `queued`
 (holds at most one version waiting on a busy slot — a newer
 registration overwrites it, not a FIFO backlog; the lib carries it
 through unvalidated, it is deployment-job state). Slots
@@ -271,9 +279,10 @@ are named per goal, later per goal and window; the bidding agent groups
 each request's candidates by goal and calls the lib per slot, so a new
 goal is a new slot and config file, not an interface change. The lib
 reacts only to revision changes and fails static. Offline obligations:
-the deployment job is the only
-writer; it validates before writing (schema, artifact exists, checksums
-match); every revision strictly increases; checksums live in the config
+the deployment jobs are the only
+writers; every write is validated (schema, artifact exists, checksums
+match) and conditional, so concurrent writers cannot clobber each
+other; every revision strictly increases; checksums live in the config
 so the mutable pointer is tied to immutable content.
 
 ### 3. Hot-feature store
@@ -294,14 +303,20 @@ and the agent. The exact service choice is deferred.
 
 ### 4. Decision logs
 
-One row per scored candidate. The lib's `DecisionRecord` carries:
+One row per scored candidate per arm (`arm` takes
+champion/challenger/shadow; shadow rows carry empty routing fields by
+design). The lib's `DecisionRecord` carries:
 model name, version, arm, config revision, request id, candidate id,
 probability, the model inputs (numeric and text), the routing salt,
 the routing-unit value, the per-candidate defaulted fields, and the
-timestamp. Rows join impressions and labels by
-`(request_id, candidate_id)`. Offline obligations: ingest
+timestamp. The lib logs the request and candidate input maps; the
+hot-feature values read from the mirror are not yet in the row — our
+standing ask is that every model input, hot features included, lands
+in the record (the serving-side work list). Rows join impressions and
+labels by `(request_id, candidate_id)` plus arm and version for
+uniqueness. Offline obligations: ingest
 the rows into the dataset layers and build the per-arm readout tables
-the deployment job's readout pass judges. Decision logs also feed
+the `deploy-readout` job's pass judges. Decision logs also feed
 monitoring, and are the raw material for the bidder
 response dataset the client wants back (`09_monitoring.md`); they are never the
 label universe. The serving side has not settled where the rows land:

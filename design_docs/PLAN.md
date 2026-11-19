@@ -18,10 +18,11 @@ touchpoints:
    strings pass through. The manifest carries the input schema and the
    hot-feature join spec (join keys, `key_template`, default).
 2. Rollout config — one small mutable JSON per model slot: champion
-   (later challenger + routing), version, artifact URI, checksums,
+   (later challenger + routing, plus `queued` for a version waiting on
+   a busy slot), version, artifact URI, checksums,
    audit fields (`updated_at`, `updated_by`), and a monotonically
-   increasing `revision` that triggers hot swap. Written by a deployment
-   job; the lib never talks to MLflow/Databricks. Slots are named per
+   increasing `revision` that triggers hot swap. Written by the
+   deployment jobs; the lib never talks to MLflow/Databricks. Slots are named per
    goal (later per goal and window); the bidding agent groups
    candidates by goal and calls the lib per slot, so a new goal is a
    new slot, not an interface change.
@@ -33,7 +34,8 @@ touchpoints:
 4. Decision logs — one row per scored candidate, emitted through the
    lib's logger interface: model, version, arm, revision, request id,
    candidate id, probability, timestamp, the model inputs, the routing
-   salt, the routing-unit value, and a scored-versus-default flag. We
+   salt, the routing-unit value, and the per-candidate defaulted
+   fields. We
    use them for evaluation, drift, and rollout readout — never as the
    label universe.
 
@@ -158,7 +160,7 @@ toward the general fit, baked into the same artifact); export
 validation bar; label/feature config lineage with the model version.
 
 `06_validation_promotion.md` — the decision logic of the Databricks
-deployment job (one job, two docs with `07`): rollout policy, per-arm
+deployment jobs (one component, two docs with `07`): rollout policy, per-arm
 readout, promotion/rollback verdicts, approval placement. Ranking and
 calibration gates themselves live in `05_training.md`, before a
 version ever registers.
@@ -167,16 +169,17 @@ error as a standard evaluation cut (it detects when a per-advertiser
 calibration layer would earn its place); manual vs. automated gates;
 proxy metrics while labels mature.
 
-`07_deployment_job.md` — the deployment job itself, the bridge to
-serving: triggered by model registration; task per step (claim,
-export, advance, read out, promote/rollback); immutable artifact +
-manifest on S3; rollout config writes with bumped revision; rollback =
-config pointing at a previous version.
-Settles: task structure and the execution model (one Lakeflow job, two
-branches by trigger; registration starts a rollout, scheduled and
-alert-triggered readout passes move it; per-task compute; the rollout
-config's content is the state; approvals as model-version tags); the
-write paths into shared state (same installation); the key-presence
+`07_deployment_job.md` — the deployment jobs themselves, the bridge to
+serving: `deploy-register` (model registration → export, then claim
+and entry write, or the queue) and `deploy-readout` (scheduled and
+alert-triggered passes: advance, read out, promote/rollback, queue
+consumption); immutable artifact + manifest on S3; conditional rollout
+config writes with bumped revision; rollback = config pointing at a
+previous version.
+Settles: the two-job execution model (registration starts a rollout,
+the readout passes move it; the rollout config's content is the state;
+approvals as model-version tags); the write paths into shared state
+(same installation, S3 conditional writes); the key-presence
 validation handoff with `04_features.md`.
 
 `08_orchestration_repos.md` — the two repos: the DAG repo holds the
@@ -184,13 +187,15 @@ pipeline framework and every per-pipeline definition (DAG file,
 pipeline YAML pinning `package_version`, workload YAMLs = model config
 and rollout policy); the workload repo is the pipeline-agnostic
 versioned package (logic + config schemas) plus the one standing-job
-bundle (the deployment job). Pipelines are submitted at trigger time
-with the pinned wheel; schemas are owned by the workload package and
+bundle (the two deployment jobs). Pipeline stages are submitted at
+trigger time as single-task runs with the pinned wheel, chained by the
+DAG; schemas are owned by the workload package and
 validated in the DAG repo's CI.
 Settles: repo layouts and the definitions-vs-machinery split; the
 submit-time invocation pattern with explicit version pinning; testing
 strategy; environment mechanics (dev/prod catalogs, per-env config);
-the deployment job as one definition instantiated per environment.
+the deployment jobs as one definition each, instantiated per
+environment.
 
 `09_monitoring.md` — offline monitoring and decision-log ingestion:
 landing the rows, the datasets derived from them (per-arm readout
@@ -236,7 +241,7 @@ The doc set is complete: 00–09 written.
    conditions on a served impression — they enter only as feature and
    analysis sources.
 6. Orchestration-side opens, detailed in `08_orchestration_repos.md`:
-   MWAA reuse versus our own instance; CI tooling and wheel publishing;
+   MWAA reuse versus our own instance;
    repo hosting; dev-data policy; dev/prod account topology (same
    account is the working assumption).
 

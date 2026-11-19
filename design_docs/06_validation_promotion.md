@@ -1,8 +1,8 @@
 # 06 — Validation and promotion
 
-The decision logic of the deployment job. One job, two docs:
-`07_deployment_job.md` owns the mechanics (tasks, triggers, writes);
-this doc owns what the tasks decide on — the rollout policy, the
+The decision logic of the deployment jobs. One component, two docs:
+`07_deployment_job.md` owns the mechanics (jobs, triggers, writes);
+this doc owns what the readout decides on — the rollout policy, the
 per-state readout verdicts, the guardrails, and where humans approve.
 
 ## Decision inputs
@@ -14,11 +14,13 @@ Everything a verdict reads comes from three places:
   ever registers. A version that fails never registers, so the job can
   assume quality is already settled.
 - the per-arm readout tables (`09_monitoring.md` builds them): decision
-  rows joined with matured labels, aggregated per model, version, arm,
-  and revision. This is also where an enabled A/B's champion-versus-
-  challenger comparison is read from.
+  rows joined with matured labels, aggregated per model, version, and
+  arm, with the config revision as a sub-key. This is also where an
+  enabled A/B's champion-versus-challenger comparison is read from.
 - guardrail signals: spend, win rate, delivery, and the serving-side
-  health metrics (latency, errors, defaulted-feature rates). Latency,
+  health metrics (latency, errors, defaulted-feature rates, fleet
+  version coverage, the shadow attempted-versus-dropped counters).
+  Latency,
   errors, and defaulted-feature rate are agent-internal, continuous.
   Spend, win rate, and delivery depend on auction-outcome data the
   agent does not observe directly (open question 5) — the only
@@ -38,11 +40,13 @@ registered with the model version alongside it
 - bake times — minimum time in each state before a verdict, and the
   maximum hold (below).
 - canary ramp — shape and the traffic level that counts as the
-  promotion point.
+  promotion point. The ramp does not end there: once gate 2 approves,
+  it continues to 100% in the same steps and bake times, and the
+  promotion (the alias flip) happens only when the ramp completes.
 - gate 1 — on or off. Off (the default) auto-proceeds once shadow's
   bake time is green; on holds for a human before the first live bid.
-- A/B — on or off. Off is the common case (see Retraining modes); on
-  adds the A/B test definition below to the ramp.
+- `ab_test` — on or off. Off is the common case (see Retraining
+  modes); on adds the A/B test definition below to the ramp.
 - evidence mode — what promotion waits for: `full_window` or `proxy`
   (see Evidence modes). Per model and per change: a routine refresh of
   an incumbent can reasonably promote on proxy evidence, a new model or
@@ -51,7 +55,9 @@ registered with the model version alongside it
   model default to `full_window`.
 
 Gate 2 (promote) is fixed for every policy and is not part of the
-policy (see Approval gates). That is, no model goes to PRD unattended.
+policy (see Approval gates). That is, no model goes to PRD unattended
+— with the one bootstrap exception for a new slot's first version
+(Approval gates).
 
 ## Retraining modes
 
@@ -76,8 +82,9 @@ was trained.
 
 ## Rollout states and readout
 
-The advance and readout tasks loop through the states; each pass
-produces one verdict: continue, hold, or abort.
+The readout passes move through the states one at a time
+(`07_deployment_job.md`); each pass produces one verdict: continue,
+hold, or abort.
 
 ```mermaid
 flowchart LR
@@ -87,7 +94,7 @@ flowchart LR
   CA -. if A/B enabled .-> AB["A/B"]
   AB -. feeds back .-> CA
   CA --> G2{"gate 2<br/>mandatory"}
-  G2 --> RAMP["ramp to 100%"]
+  G2 --> RAMP["ramp to 100%<br/>(same steps and bakes)"]
   RAMP --> PR["promote"]
   FL -. abort .-> RB["rollback"]
   SH -. abort .-> RB
@@ -98,16 +105,26 @@ flowchart LR
 ```
 
 - Fleet load (0% traffic) — the artifact loads fleet-wide without
-  scoring anyone. Reads what is observable at 0%: the lib's
+  scoring anyone. Reads what is observable at 0%: fleet version
+  coverage (the lib's model-loaded counter, dimensioned by version —
+  the lib expects the deployment side to watch it fleet-wide; a pod
+  still loading silently serves the champion), the lib's
   reload-error counters, load failures the agent surfaces at startup,
   and fleet health (memory, restarts) from the serving-side monitoring.
-  Continue when the fleet is healthy for the bake time.
+  Continue when the fleet holds the version and is healthy for the
+  bake time.
 - Shadow — the challenger scores real traffic out-of-band; no bid is
-  affected. Reads, no labels needed: the challenger's score
+  affected. Two prerequisites the stage stands on: the pods are built
+  with the lib's shadow sessions enabled (a process option the config
+  cannot set, and a standing core reservation), and the config write
+  entering shadow sets the challenger's `sample_rate`
+  (`07_deployment_job.md` — the lib samples nothing without it).
+  Reads, no labels needed: the challenger's score
   distribution against the champion's on the same traffic,
   defaulted-feature rates (a spike means a declared field is missing —
   a hot-feature job lagging the manifest, or the agent not sending a
-  field), latency contribution, and sampling integrity.
+  field), latency contribution, and sampling integrity (the lib's
+  shadow attempted-versus-dropped counters).
   Continue when distributions are stable and health is green for the
   bake time.
 - Canary ramp — live bids, ramping up to the policy's promotion point.
@@ -135,7 +152,7 @@ experiment case).
 | Parameter | Definition |
 |---|---|
 | Metrics | ranking (absolute floor + margin vs. champion), calibration (absolute floor), cost-per-action vs. the goal — per arm |
-| Traffic split | configurable ratio + split key. Split key default: per-request (largest, fastest-accumulating sample). Coarser keys (per-advertiser, per-line-item) trade sample speed for exposure consistency — a deliberate choice per test, not a default |
+| Traffic split | configurable ratio + split key. The split key must be a **request-level** field: the serving router resolves it against the request maps only and refuses candidate-level keys (advertiser, line item) — a candidate-level split would bake the assignment into selection, with a silent one-arm failure mode. Default: per-request (largest, fastest-accumulating sample); a coarser request-level key (publisher, household) trades sample speed for exposure consistency — a deliberate choice per test, not a default |
 | Arm size | statistical power calculation — needs a baseline conversion rate and a minimum detectable effect (open question 3) |
 | Duration | derived, not set directly: evidence mode × arm size × actual traffic volume. `full_window` waits for the real attribution window to mature; `proxy` promotes on the shortest available window plus guardrails |
 
@@ -146,8 +163,8 @@ experiment's A/B is in flight, promotion is frozen for that slot —
 champion has to stay fixed for the comparison to mean anything.
 Scheduled and alert-triggered retrains keep happening underneath and
 queue, the latest superseding whoever's waiting once the freeze lifts.
-Mechanics (the `queued` field, registration-time slot check, re-trigger
-on resolution): `07_deployment_job.md`.
+Mechanics (the `queued` field, registration-time entry, queue
+consumption by the readout pass): `07_deployment_job.md`.
 
 ## Guardrails and automated abort
 
@@ -163,7 +180,7 @@ to trigger an abort.
 | Win-rate collapse | the underlying data arrives (open question 5) |
 | Calibration blowout on early labels (realized conversion rate off the prediction by more than a configured multiple) | labels mature |
 
-Any breach aborts: the promote task's rollback branch writes a config
+Any breach aborts: the readout pass's abort path writes a config
 pointing at the previous version (`07_deployment_job.md`). Abort is
 cheap and reversible — a rolled-back version can re-enter the loop
 after a fix — so guardrails are tuned to fire early.
@@ -180,7 +197,12 @@ human independent of any breach:
 
 Gate 2 (canary → promote) is fixed and mandatory for every policy —
 before the version becomes champion. This is the one invariant that
-never turns off: no version reaches the champion slot unattended.
+never turns off: no version reaches the champion slot unattended. One
+bootstrap exception: a new slot's first champion is written without
+the approval tag, because nothing serves until the serving side
+launches the goal — that launch, deliberate by nature, is the gate
+(`07_deployment_job.md`, A slot's first version). From the second
+version on, gate 2 applies unchanged.
 
 Gate 1 (shadow → canary, before the first live bid) is a policy
 parameter, off by default (Retraining modes). When on, it holds the
@@ -205,9 +227,9 @@ in the rollout policy decides how promotion handles that:
   data models, so confirming it is part of the windows question — or
   else the shortest that exists) plus the guardrails, and promotion
   proceeds on that fast evidence.
-  The full-window readout does not stop at promotion: the promote task
-  stamps a `trailing_until` tag on the model version, and the
-  deployment job's own scheduled passes keep judging it against the
+  The full-window readout does not stop at promotion: promotion stamps
+  a `trailing_until` tag on the model version, and the `deploy-readout`
+  job's scheduled passes keep judging it against the
   full window's maturing labels until the tag expires — rollback armed
   if the matured picture contradicts the fast one
   (`07_deployment_job.md`).
@@ -232,6 +254,11 @@ A model version is ready to serve when, in order:
    including A/B when the policy runs one
 5. a human approved the final promotion — and the first live exposure
    too, when gate 1 is on
+
+The ordered list does not apply to a slot's first version: it carries
+only its training-run gate (step 1), becomes champion at registration,
+and the serving-side goal launch is the gate before anything serves
+(`07_deployment_job.md`, A slot's first version).
 
 Calibration is evaluated on won impressions: the readouts join served
 impressions to their outcomes, the same population cost per action is

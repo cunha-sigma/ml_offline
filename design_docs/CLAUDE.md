@@ -27,8 +27,10 @@ parity gate) live in the serving repo, not here.
   statement) prohibits using AI systems not provided by the client's
   parent company for the work without prior written approval, and
   obliges disclosure of AI systems in use.
-- **Batch-02 ML Service Background (2026-10-11):** ad sets will gain
-  `bidding_strategy` (`max_cpm` / `goal_cpa` / `lowest_cost`) and
+- **Batch-02 ML Service Background (2026-10-11):** ad sets are proposed
+  to gain two fields that do not yet exist in the data model —
+  `bidding_strategy` (proposed values include `max_cpm` / `goal_cpa` /
+  `lowest_cost`) and
   `optimization_goal` (`impressions` needs no model; `PIXEL_PAGE_VIEW`
   and `PIXEL_PURCHASE` are **both** initial model priorities; app
   events later). The ML service must return at least `P(Action)`; the
@@ -40,8 +42,9 @@ parity gate) live in the serving repo, not here.
   Oct 1–29):** auction RPS avg ~444k / p99 ~693k / max ~1.92M; bid
   responses avg ~21k/s; candidates per auction avg **13.9** with the
   ad server's probabilistic pacing removed, **1.3** with it retained
-  (per-request maximum pending from the ad-server vendor); ~630 active
-  line items per hour; impression delay 53% ≤ 3 min — the client's
+  (per-request maximum pending from the ad-server vendor); ~630 line
+  items receiving ≥ 1 bid per hour (the client's "active" = bid
+  participation, not all enabled); impression delay 53% ≤ 3 min — the client's
   histogram puts 15 min at 81%, 90% at ~24 min. Real video bid-request
   samples (anonymized joined firehose) are delivered.
 
@@ -56,10 +59,12 @@ parity gate) live in the serving repo, not here.
 
 - Our own **Airflow (MWAA)** instance for orchestration; whether we
   reuse the client's or stand up our own is an open client question.
-- **A dedicated EKS cluster for the bidder**, most likely in its own
-  AWS account — the client's infra doc recommends this, but a
-  competing doc frames the bidder as a Terraform-ownership boundary
-  inside shared infra instead; not settled.
+- **A dedicated EKS cluster for the bidder** with its own
+  Terraform-ownership boundary — both from the client's infra doc,
+  which keeps the bidder inside shared infra; the client's other infra
+  doc says the bidder will most likely live in a **separate AWS
+  account**. Separate account versus shared-infra boundary is not
+  settled.
 - **The five curated datasets are a given.** Who produces them (the client, or
   our team's Data Engineer curating from the client's internal tables) and the
   cross-account mechanism are the Data Engineering lane's scope, not
@@ -81,8 +86,8 @@ Two dedicated repos, separate from the serving lib
    configuration, and rollout policy.
 2. **Workload repo** — the pipeline-agnostic versioned Python package
    (training, calibration, ETL, feature logic, config schemas) plus the
-   single standing-job bundle (the deployment job). Nothing
-   model-specific lives here.
+   standing-jobs bundle (the two deployment jobs, `deploy-register` and
+   `deploy-readout`). Nothing model-specific lives here.
 
 Pipelines are submitted at trigger time with the pinned package
 version; no standing pipeline jobs exist. `design_docs/` itself is the

@@ -3,9 +3,9 @@
 The training pipeline: from matured labels and feature definitions to a
 registered model version carrying a parity-checked serving artifact.
 Upstream, `09_monitoring.md` owns when runs happen and MWAA triggers
-them; downstream, registration in Unity Catalog starts the deployment
-job (`07_deployment_job.md`), which publishes what this pipeline
-already produced. This doc is the full design; which capabilities the
+them; downstream, registration in Unity Catalog starts the
+`deploy-register` job (`07_deployment_job.md`), which publishes what
+this pipeline already produced. This doc is the full design; which capabilities the
 first implementation activates is an operational decision, not part of
 it.
 
@@ -41,13 +41,13 @@ The configuration and the rollout policy are registered with the model
 version the run produced, closing the lineage `03_labels.md` defers
 here: a version always knows which label configuration, feature
 versions, calibration settings, and rollout policy belong to it, and
-the deployment job reads the policy from the registry.
+the deployment jobs read the policy from the registry.
 
 ## Pipeline structure
 
-One pipeline definition, instantiated per model configuration,
-submitted as a Databricks job run on an MWAA trigger
-(`08_orchestration_repos.md`). The pipeline does not know why it
+One pipeline definition, instantiated per model configuration; on an
+MWAA trigger the stages run as their own Databricks runs, chained by
+the DAG (`08_orchestration_repos.md`). The pipeline does not know why it
 was triggered; schedules and degradation triggers are
 `09_monitoring.md`'s.
 
@@ -78,7 +78,7 @@ flowchart LR
   EVAL["5 evaluation<br/>ranking + calibration gate"]
   EXP["6 export + parity + latency<br/>compose graph, 1e-4 + budget gates"]
   ART[/"model.onnx + manifest.json<br/>+ calibration and parity reports<br/>(MLflow run artifacts)"/]
-  REG["7 register in Unity Catalog<br/>handoff to the deployment job"]
+  REG["7 register in Unity Catalog<br/>handoff to deploy-register"]
 
   TS --> HPO --> FIT --> CAL --> EVAL --> EXP --> ART --> REG
   TS --> FIT
@@ -259,14 +259,16 @@ measured against what's currently live."
   distribution and per-feature input distributions with null shares
   (`09_monitoring.md` reads them as drift baselines) — are logged as
   run artifacts; registering the version in Unity
-  Catalog is the pipeline's last act and the deployment job's trigger.
-  Registration triggers the deployment job through a link set on the
-  registered model in Unity Catalog ("on a new version, run this job");
-  for a brand-new slot that link does not exist yet, so the pipeline
+  Catalog is the pipeline's last act and the `deploy-register` job's
+  trigger. Registration triggers that job through a link set on the
+  registered model in Unity Catalog ("on a new version, run this job" —
+  pointing at `deploy-register` specifically, the only
+  registration-triggered one of the two deployment jobs); for a
+  brand-new slot that link does not exist yet, so the pipeline
   sets it when it registers the slot's first version — once per model,
   a no-op afterwards. Automating it here means a new slot can never
   silently register versions that no rollout picks up.
-  The job's export task publishes these files unchanged
+  The job's export step publishes these files unchanged
   (`07_deployment_job.md`); nothing downstream rebuilds or re-checks
   them.
 

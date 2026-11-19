@@ -13,7 +13,7 @@ The conventions are owned by the CLAUDE.md files, not duplicated here:
 
 Universal rules not stated elsewhere:
 
-- Team voice ("we/our") in all project docs; never address the reader as "you".
+- Team voice ("we/our") in all project docs; never address the reader as "you". One exception: `design_docs/CLIENT_QUESTIONS.md` addresses the client in second person — its questions must read as real, sendable questions.
 - **Anonymization** (rule stated in root `CLAUDE.md`): never name the client, its parent company, or its vendors — "the client", "the ad-server vendor", "the web-attribution provider", "the upstream DSP". Exceptions: literal data identifiers in backticks and client-original files stay verbatim. Every new client doc reparsed into a `md/` folder gets the anonymization pass before anything cites it.
 - Client questions are referenced **by topic**, never by Q-number, outside the delivered report's own frozen Q1–Q16 list. The living register is `design_docs/OPEN_QUESTIONS.md`. Delivered reports under `reports/` are frozen — never edit them.
 - `DISCOVERY_SUMMARY.md` keeps Part 1 (client facts) and Part 2 (our analysis) strictly separate; anything not client-attributable in Part 1 must be explicitly attributed (SW team / ours) or moved.
