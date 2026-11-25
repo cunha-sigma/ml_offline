@@ -269,9 +269,9 @@ Path: `<model_name>/rollout_config.json`, sibling to that model's
 `v<version>/` artifact folders. One mutable JSON per model slot: `model_name`, monotonic `revision`,
 `updated_at` and `updated_by` for audit, `champion` (`version`, `uri`,
 `checksums` for both files), `challenger` (the same reference plus
-`sample_rate`, the shadow sampling fraction — absent means shadow
-scores nothing and the lib's validation does not catch it, so our
-shadow revision always sets it), `routing`, and `queued`
+`sample_rate`, the shadow sampling fraction — the lib rejects a shadow
+revision whose rate is outside (0, 1], and our shadow revision always
+sets it), `routing`, and `queued`
 (holds at most one version waiting on a busy slot — a newer
 registration overwrites it, not a FIFO backlog; the lib carries it
 through unvalidated, it is deployment-job state). Slots
@@ -309,10 +309,10 @@ design). The lib's `DecisionRecord` carries:
 model name, version, arm, config revision, request id, candidate id,
 probability, the model inputs (numeric and text), the routing salt,
 the routing-unit value, the per-candidate defaulted fields, and the
-timestamp. The lib logs the request and candidate input maps; the
-hot-feature values read from the mirror are not yet in the row — our
-standing ask is that every model input, hot features included, lands
-in the record (the serving-side work list). Rows join impressions and
+timestamp — plus the joined hot-feature values (`InputsHot`, one entry
+per manifest-declared hot field, defaults included), so the row
+carries the complete model input: caller-sent maps unfiltered, hot
+values manifest-bounded. Rows join impressions and
 labels by `(request_id, candidate_id)` plus arm and version for
 uniqueness. Offline obligations: ingest
 the rows into the dataset layers and build the per-arm readout tables

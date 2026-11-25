@@ -103,9 +103,8 @@ one of:
   means writing a new revision with the next state's fields (fleet
   load, shadow, canary ramp — A/B nested inside the ramp when the
   policy enables it, `06_validation_promotion.md`). The shadow
-  revision always sets the challenger's `sample_rate`: the lib samples
-  nothing without it, and the lib's own validation does not catch the
-  omission.
+  revision always sets the challenger's `sample_rate`; the lib rejects
+  a shadow revision whose rate is outside (0, 1] (fail static).
 - hold — exit without writing; at an active gate, notify the approver.
 - promote — on a full pass through every state, move the champion and
   previous aliases and write the final config. A promotion under the

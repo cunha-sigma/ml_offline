@@ -56,39 +56,51 @@ data under the privacy row) and the two rows above.
 
 ## Serving-side changes to schedule ([ml_serving](https://github.com/cunha-sigma/ml_serving))
 
-The work list the design still requires from the serving lib; the
-designs here already assume these shapes.
+The agreed work list is **delivered** — the serving lane's per-item
+record (`ml_serving_requirements.md` at the ml_serving repo root, 15
+items) marks items 1–14 done as of 2026-11-19, covering the original
+nine plus four of the five asks sent that day. Our reconciled record:
+`research/ml_serving_requirements.md`. What remains:
 
 | Change | For |
 |---|---|
-| An S3 source for the rollout config (or an S3-to-file sync); the artifact S3 source exists | the deployment jobs write S3; the lib must read it |
-| Per-candidate goal (and window), model name, and config revision in the scoring response — or close as satisfied by slot identity plus the decision record (each slot serves one goal; the revision rides the decision row) | the bid-decision step, decision reconstruction, and the response contents ADR-0001 states |
-| Validate (or default) `challenger.sample_rate`: an absent or zero rate makes shadow silently score nothing, and the lib's config validation accepts it | safe shadow-stage config writes |
-| Every model input in the decision row, hot-feature values included — today the lib logs the request and candidate input maps only | input-drift monitoring and train/serve skew checks on decision rows |
-| Staged config propagation and alarm-rollback ownership | safe config rollout at fleet scale |
-| Redis credential-rotation ownership: the lib gained auth/TLS options, rotation is an open serving-side question, and the candidate schemes are ops-only — ours to co-own as the store's writers | the hot-store write path |
-| Doc alignment: the serving docs still describe `queued` as jobs-API self-trigger bookkeeping (consumption is now a plain config write by the readout pass) and still list offline replay as the adopted rollout's step 1 (replaced by the absolute training-time gate) | serving docs matching the agreed design |
+| Hot-store credential rotation — a joint design (their item 15): our Airflow jobs hold the writer credentials, so the scheme constrains both sides | the hot-store write path |
+| Staged config propagation and alarm-rollback ownership (deferred, unassigned in both repos; the propagation hop itself is now one poll against the S3 model root) | safe config rollout at fleet scale |
+| Confirm the replay split serving assumed when adding `InputsHot`: replaying a *new* hot feature is our side, from our archived feature history joined by the logged keys — true of our design (`derived.feature_<model>_*`); confirmation owed, and row-widening revisited only if we ever cannot archive | decision-row replay semantics |
+
+Closed by serving decision along the way: no response-metadata fields
+are coming (goal/window ride in `model_name` per slot naming, the
+revision rides the decision row — our-side follow-up: amend ADR-0001's
+stated response contents); and the S3 → ConfigMap sync **dissolved**
+rather than got an owner — `Options.ModelRoot` has the lib read and
+poll `rollout_config.json` from the model's S3 folder itself, no file
+in the pod, rollback propagation bounded by the poll interval alone.
 
 Standing prerequisite, not a code ask: shadow scoring runs only on
 pods built with the lib's shadow-sessions option (a process setting
 the rollout config cannot enable), and those sessions are a permanent
 core reservation — both feed the serving capacity sizing.
 
-Shipped by the lib (verified 2026-11-18, commits through 2026-11-13):
-the shadow scorer — bounded worker pool, attempted-versus-dropped
+Shipped by the lib (verified 2026-11-19, commit `63101d0`): the
+shadow scorer — bounded worker pool, attempted-versus-dropped
 counters, queue-depth gauge, shadow rows to the decision logger under
 the `shadow` arm; `Slot.LiveVersions` for fleet version coverage;
-Redis auth and TLS options; decision rows carry request
-id, model inputs, routing salt, routing-unit value, and per-candidate
-defaulted fields; the scoring response is per-candidate (probability,
-arm, model version, defaulted fields); the rollout config has
-fleet-load/shadow/canary modes with A/B nested in the ramp and a
-`queued` slot; metrics are dimensioned by model/arm/version; challenger
-routing is wired (champion fallback on missing unit or unloaded
-challenger); the artifact source reads S3; slot naming is documented
-lib-side; the serving repo closed its approval-placement and
-label-delay questions with the `06_validation_promotion.md` answers,
-and closed schema review as ML-lane-owned (no external gate).
+Redis auth and TLS options; decision rows carry request id, the full
+caller-sent model inputs, the joined hot-feature values (`InputsHot`),
+routing salt, routing-unit value, and per-candidate defaulted fields;
+the scoring response is per-candidate (probability, arm, model
+version, defaulted fields); the rollout config has
+fleet-load/shadow/canary modes with A/B nested in the ramp, a `queued`
+slot, and shadow `sample_rate` validation (fail static on a rate
+outside (0, 1]); metrics are dimensioned by model/arm/version;
+challenger routing is wired (champion fallback on missing unit or
+unloaded challenger); the lib loads artifacts and config from one
+model root (S3 or local); slot naming is documented lib-side; the
+serving docs match the agreed rollout design (queued as consumable
+data, training-time gate instead of offline replay); the serving repo
+closed its approval-placement and label-delay questions with the
+`06_validation_promotion.md` answers, and closed schema review as
+ML-lane-owned (no external gate).
 
 Excluded as settled (resolved during the design audits): Max CPA
 availability at bid time, probability-versus-expected-value interface,

@@ -118,7 +118,8 @@ flowchart LR
   with the lib's shadow sessions enabled (a process option the config
   cannot set, and a standing core reservation), and the config write
   entering shadow sets the challenger's `sample_rate`
-  (`07_deployment_job.md` — the lib samples nothing without it).
+  (`07_deployment_job.md`; the lib rejects a shadow revision without a
+  valid rate).
   Reads, no labels needed: the challenger's score
   distribution against the champion's on the same traffic,
   defaulted-feature rates (a spike means a declared field is missing —
