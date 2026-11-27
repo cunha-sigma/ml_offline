@@ -266,7 +266,7 @@ the highest-leverage action now: **land data access**
 
 <div class="border-2 border-amber-600 rounded-lg p-4">
   <div class="font-bold">4 · ONNX Runtime watch</div>
-  <div class="text-sm mt-2">the inference engine's repo went private (security investigation) — settle our contingency; could change the serving lib a lot</div>
+  <div class="text-sm mt-2">engine's repo still down · the one drop-in alternative <b>tested and failed</b> (Tract: missing ops) → plan = our verified archive + building from audited source; serving lib unchanged</div>
 </div>
 
 </div>
@@ -281,13 +281,17 @@ the highest-leverage action now: **land data access**
   framework (today it's a skeleton), stand up CI (none exists in any
   repo) and the dev infrastructure.
 - 4: Microsoft took the ONNX Runtime repo private (malicious-content
-  investigation, 2026-11). Our serving artifact executes on it. State
-  today: all 1.30.0 artifacts archived locally with checksums,
-  cross-verified against a second official channel; fresh image builds
-  are broken (pull from the gone GitHub release) until we mirror.
-  Contingency ladder: vendored source build (MIT, zero design change)
-  is primary; alternate engine (Tract) is the only tested-able
-  fallback pending an op-coverage check; single-file artifact is
-  non-negotiable, so the pure-Go scorer path is ruled out. Watch for
-  the investigation outcome before any version bump.
+  investigation, 2026-11); still down and unexplained as of 11-26. Our
+  serving artifact executes on it. State today: all 1.30.0 artifacts
+  archived locally with checksums, cross-verified against a second
+  official channel; fresh image builds are broken (pull from the gone
+  GitHub release) until we mirror (Phase 1, ~1h).
+  Tract test ran 2026-11-26: FAIL — OneHotEncoder unimplemented (x70
+  in our graph), trees untested behind it. So there is NO drop-in
+  engine; the contingency for every scenario, veto included, is the
+  vendored source build (MIT, pinned commit, zero design change, no
+  serving-lib change). Harness kept for re-testing new Tract releases:
+  research/onnx_runtime_risk/tract_test/. Single-file artifact stays
+  non-negotiable (pure-Go scorer ruled out). Frozen on 1.30.0 until an
+  official statement.
 -->

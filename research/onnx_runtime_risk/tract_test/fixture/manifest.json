@@ -1,0 +1,431 @@
+{
+  "model_name": "cpa_conversion",
+  "version": 1,
+  "mlflow_run_id": "local-dev",
+  "onnx": {
+    "file": "model.onnx",
+    "output_name": "p_cal"
+  },
+  "input_schema": [
+    {
+      "name": "request_id",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "test",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "auctionid_str",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "auction_timestamp",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_type",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_os",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_osv",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_make",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_model",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_language",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_dnt",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_carrier",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_connectiontype",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_ua",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_ip",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_ifa",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_dpidmd5",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_dpidsha1",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_hwv",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_js",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "device_lmt",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "browser",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "browser_version",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "screen_size",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "country",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "region",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "zip",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "metro",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "geo_type",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "targeting_country",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "targeting_region",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "targeting_city",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "targeting_zip",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "targeting_metro",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "targeting_geo_type",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "targeting_lat_long_present",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "inventory_type",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "publisher_id",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "content_id",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "site_id",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "site_page",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "site_ref",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "site_mobile",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "app_id",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "app_name",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "app_domain",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "app_storeurl",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "publisher_name",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "user_id",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "user_buyeruid",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "user_customdata",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "user_gender",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "user_country",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "user_region",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "user_metro",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "user_city",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "user_zip",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "user_geo_type",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "user_ext_id",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "user_id_type",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "coppa",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "inventory_source",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "buzz_key",
+      "source": "request",
+      "dtype": "string"
+    },
+    {
+      "name": "line_item_id",
+      "source": "candidate",
+      "dtype": "string"
+    },
+    {
+      "name": "campaign_id",
+      "source": "candidate",
+      "dtype": "string"
+    },
+    {
+      "name": "account_id",
+      "source": "candidate",
+      "dtype": "string"
+    },
+    {
+      "name": "advertiser_id",
+      "source": "candidate",
+      "dtype": "string"
+    },
+    {
+      "name": "candidate_buzz_key",
+      "source": "candidate",
+      "dtype": "string"
+    },
+    {
+      "name": "bidding_strategy",
+      "source": "candidate",
+      "dtype": "string"
+    },
+    {
+      "name": "pace_delivery",
+      "source": "candidate",
+      "dtype": "string"
+    },
+    {
+      "name": "device_w",
+      "source": "request"
+    },
+    {
+      "name": "device_h",
+      "source": "request"
+    },
+    {
+      "name": "device_ppi",
+      "source": "request"
+    },
+    {
+      "name": "utcoffset",
+      "source": "request"
+    },
+    {
+      "name": "lat",
+      "source": "request"
+    },
+    {
+      "name": "lon",
+      "source": "request"
+    },
+    {
+      "name": "targeting_lat",
+      "source": "request"
+    },
+    {
+      "name": "targeting_lon",
+      "source": "request"
+    },
+    {
+      "name": "auction_hostid",
+      "source": "request"
+    },
+    {
+      "name": "auction_tid",
+      "source": "request"
+    },
+    {
+      "name": "at",
+      "source": "request"
+    },
+    {
+      "name": "tmax",
+      "source": "request"
+    },
+    {
+      "name": "time_of_week",
+      "source": "request"
+    },
+    {
+      "name": "hour_of_day",
+      "source": "request"
+    },
+    {
+      "name": "li_clicks_30m",
+      "source": "hot"
+    }
+  ],
+  "hot_features": [
+    {
+      "name": "li_clicks_30m",
+      "join_keys": [
+        "line_item_id"
+      ],
+      "key_template": "cpa:li_clicks_30m:{line_item_id}",
+      "default": 0.0
+    }
+  ]
+}
